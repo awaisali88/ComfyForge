@@ -101,3 +101,63 @@ stacks:
   audio:
     bark_model: "suno/bark"
     f5tts_model: "SWivid/F5-TTS"
+
+# ──────────────────────────────────────────────
+# Model Architecture Definitions
+# ──────────────────────────────────────────────
+# Maps CivitAI baseModel names to their loader requirements.
+# When clone-civitai encounters a model, it looks up the architecture
+# here to know which nodes, CLIP files, and VAE to use.
+# Add new architectures here -- no code changes needed.
+architectures:
+  sd15:
+    aliases: ["SD 1.4", "SD 1.5", "SD 1.5 LCM", "SD 2.1"]
+    loader: checkpoint          # CheckpointLoaderSimple (has CLIP+VAE built-in)
+    workflow: text2img_sdxl
+    lora_loader: standard       # LoraLoader (model + clip)
+    defaults:
+      cfg: 7.0
+      steps: 25
+      sampler: euler_ancestral
+      scheduler: normal
+
+  sdxl:
+    aliases: ["SDXL 0.9", "SDXL 1.0", "SDXL 1.0 LCM", "SDXL Turbo", "SDXL Lightning", "Pony"]
+    loader: checkpoint
+    workflow: text2img_sdxl
+    lora_loader: standard
+    defaults:
+      cfg: 7.0
+      steps: 25
+      sampler: euler_ancestral
+      scheduler: normal
+
+  flux:
+    aliases: ["Flux.1 D", "Flux.1 S"]
+    loader: unet                # UNETLoader (separate CLIP+VAE needed)
+    clip: ["t5xxl_fp16.safetensors", "clip_l.safetensors"]
+    clip_type: flux             # DualCLIPLoader type parameter
+    vae: "ae.safetensors"
+    workflow: text2img_flux
+    lora_loader: model_only     # LoraLoaderModelOnly
+    defaults:
+      cfg: 1.0
+      steps: 20
+      guidance: 3.5
+      sampler: euler
+      scheduler: simple
+
+  zimageturbo:
+    aliases: ["ZImageTurbo", "ZImageBase"]
+    loader: unet
+    clip: ["qwen_3_4b.safetensors"]
+    clip_type: ltxv             # CLIPLoader type parameter
+    vae: "ae.safetensors"
+    workflow: text2img_zimageturbo
+    lora_loader: model_only
+    defaults:
+      cfg: 1.0
+      steps: 8
+      guidance: 1.0
+      sampler: euler
+      scheduler: simple

@@ -52,20 +52,9 @@ SAMPLER_MAP: dict[str, tuple[str, str]] = {
 
 # ── Base-model routing ──────────────────────────────────────────────────
 
-BASE_MODEL_MAP: dict[str, str] = {
-    "SD 1.4":      "sd15",
-    "SD 1.5":      "sd15",
-    "SD 1.5 LCM":  "sd15",
-    "SD 2.1":      "sd15",   # same node graph
-    "SDXL 0.9":    "sdxl",
-    "SDXL 1.0":    "sdxl",
-    "SDXL 1.0 LCM":"sdxl",
-    "SDXL Turbo":  "sdxl",
-    "SDXL Lightning":"sdxl",
-    "Pony":        "sdxl",
-    "Flux.1 D":    "flux",
-    "Flux.1 S":    "flux",
-}
+
+# BASE_MODEL_MAP is now in configs/config.yaml under "architectures".
+# Use Config.get_architecture(base_model_name) to look up.
 
 _LORA_RE = re.compile(r"<lora:([^:>]+):([0-9.]+)>")
 
@@ -290,6 +279,16 @@ def fetch_image_metadata(image_id: int, config=None) -> CivitaiGenMeta:
             "  This image may have been uploaded without generation info."
         )
 
+    # CivitAI API sometimes double-nests: meta: { id, meta: { prompt, seed, ... } }
+    if isinstance(meta.get("meta"), dict):
+        meta = meta["meta"]
+    elif not meta.get("prompt") and not meta.get("seed") and not meta.get("steps"):
+        # meta has no generation fields — might be wrapper only
+        raise ValueError(
+            f"CivitAI image {image_id} has no generation metadata.\n"
+            "  This image may have been uploaded without generation info."
+        )
+
     # Parse dimensions from meta or top-level
     width = data.get("width", 512)
     height = data.get("height", 512)
@@ -322,9 +321,40 @@ def fetch_image_metadata(image_id: int, config=None) -> CivitaiGenMeta:
             break
 
     # Also check modelVersionIds from the image response
+    # Look up each version to properly identify checkpoint vs LoRA
     model_version_ids = data.get("modelVersionIds") or []
-    if not checkpoint_vid and model_version_ids:
-        checkpoint_vid = model_version_ids[0]
+    if model_version_ids:
+        for vid in model_version_ids:
+            try:
+                mv = _fetch_model_version(vid, config)
+                mv_type = (mv.get("model", {}).get("type", "") or "").upper()
+                mv_base = mv.get("baseModel", "")
+                mv_files = mv.get("files", [])
+                mv_filename = mv_files[0].get("name") if mv_files else None
+
+                if mv_type in ("CHECKPOINT", "MODEL") and not checkpoint_vid:
+                    checkpoint_vid = vid
+                    checkpoint_name = mv.get("model", {}).get("name", checkpoint_name)
+                elif mv_type in ("LORA", "LOCON", "LYCORIS"):
+                    # Add as LoRA if not already found via prompt tags
+                    lora_name = mv.get("model", {}).get("name", "")
+                    already_found = any(
+                        lr.version_id == vid or _fuzzy_name_match(lr.name, lora_name)
+                        for lr in loras
+                    )
+                    if not already_found:
+                        loras.append(LoraRef(
+                            name=lora_name,
+                            weight=1.0,
+                            version_id=vid,
+                            filename=mv_filename,
+                        ))
+            except Exception as e:
+                console.print(f"  [yellow]WARNING: Could not fetch model version {vid}: {e}[/]")
+
+        # If no checkpoint found in version IDs, take the first one as fallback
+        if not checkpoint_vid and model_version_ids:
+            checkpoint_vid = model_version_ids[0]
 
     # Fetch checkpoint details to get baseModel and filename
     base_model_raw = ""
@@ -339,17 +369,10 @@ def fetch_image_metadata(image_id: int, config=None) -> CivitaiGenMeta:
         except Exception as e:
             console.print(f"  [yellow]WARNING: Could not fetch checkpoint version {checkpoint_vid}: {e}[/]")
 
-    # Resolve base model key
-    base_model = BASE_MODEL_MAP.get(base_model_raw, "")
-    if not base_model:
-        # Try guessing from checkpoint name
-        ckpt_lower = checkpoint_name.lower()
-        if "flux" in ckpt_lower:
-            base_model = "flux"
-        elif "xl" in ckpt_lower or "sdxl" in ckpt_lower or "pony" in ckpt_lower:
-            base_model = "sdxl"
-        else:
-            base_model = "sdxl"  # safe default -- same node graph as SD 1.5
+    # Resolve base model key via config architecture registry
+    from .config import Config
+    cfg = config or Config.load()
+    base_model, arch = cfg.get_architecture(base_model_raw)
 
     return CivitaiGenMeta(
         image_id=image_id,
@@ -512,63 +535,72 @@ def resolve_and_download_models(
 # ── Workflow Generation ──────────────────────────────────────────────────
 
 
-def generate_clone_workflow(meta: CivitaiGenMeta, model_filenames: dict) -> dict:
-    """Generate an API-format workflow dict that reproduces the CivitAI image."""
-    from .workflows import text2img_sdxl, text2img_flux
+def generate_clone_workflow(meta: CivitaiGenMeta, model_filenames: dict, config=None) -> dict:
+    """Generate an API-format workflow dict that reproduces the CivitAI image.
 
-    if meta.base_model in ("sd15", "sdxl"):
-        kwargs = {
-            "prompt": meta.prompt,
-            "negative": meta.negative_prompt or "blurry, low quality, watermark, text, deformed",
-            "checkpoint": model_filenames["checkpoint"],
-            "loras": model_filenames.get("loras") or None,
-            "width": meta.width,
-            "height": meta.height,
-            "steps": meta.steps,
-            "cfg": meta.cfg_scale,
-            "sampler": meta.sampler,
-            "scheduler": meta.scheduler,
-            "seed": meta.seed,
-        }
+    Uses the architecture registry from config to pick the right workflow function.
+    """
+    from .config import Config
+    from . import workflows
+
+    cfg = config or Config.load()
+    arch_key, arch = cfg.get_architecture(meta.base_model_raw)
+    workflow_name = arch.get("workflow", "text2img_sdxl")
+
+    # Get the workflow function by name
+    workflow_fn = getattr(workflows, workflow_name, None)
+    if workflow_fn is None:
+        raise ValueError(
+            f"Unknown workflow '{workflow_name}' for architecture '{arch_key}'.\n"
+            f"  Check architectures.{arch_key}.workflow in config.yaml"
+        )
+
+    # Build kwargs based on architecture type
+    kwargs: dict = {
+        "prompt": meta.prompt,
+        "checkpoint": model_filenames["checkpoint"],
+        "loras": model_filenames.get("loras") or None,
+        "width": meta.width,
+        "height": meta.height,
+        "steps": meta.steps,
+        "seed": meta.seed,
+    }
+
+    loader_type = arch.get("loader", "checkpoint")
+
+    if loader_type == "checkpoint":
+        # SDXL/SD1.5 style -- uses CheckpointLoaderSimple
+        kwargs["negative"] = meta.negative_prompt or "blurry, low quality, watermark, text, deformed"
+        kwargs["cfg"] = meta.cfg_scale
+        kwargs["sampler"] = meta.sampler
+        kwargs["scheduler"] = meta.scheduler
         vae = model_filenames.get("vae")
         if vae:
             kwargs["vae"] = vae
 
-        wf = text2img_sdxl(**kwargs)
-
         if meta.hires_upscale:
             console.print(
                 f"  [yellow]WARNING: Hires fix was used (upscale: {meta.hires_upscale}x, "
-                f"upscaler: {meta.hires_upscaler}) -- not yet supported in workflow export. "
+                f"upscaler: {meta.hires_upscaler}) -- not yet supported. "
                 f"Results may differ.[/]"
             )
 
-        return wf
+    elif loader_type == "unet":
+        # Flux/ZImageTurbo style -- uses UNETLoader + separate CLIP/VAE
+        kwargs["guidance"] = meta.cfg_scale
 
-    elif meta.base_model == "flux":
-        if model_filenames.get("loras"):
-            console.print(
-                "  [yellow]WARNING: Flux LoRAs detected but not yet supported in workflow export. "
-                "LoRAs will be skipped.[/]"
-            )
+    # Filter kwargs to only params the workflow function accepts
+    import inspect
+    sig = inspect.signature(workflow_fn)
+    valid_params = set(sig.parameters.keys())
+    has_var_keyword = any(
+        p.kind == inspect.Parameter.VAR_KEYWORD
+        for p in sig.parameters.values()
+    )
+    if not has_var_keyword:
+        kwargs = {k: v for k, v in kwargs.items() if k in valid_params}
 
-        kwargs = {
-            "prompt": meta.prompt,
-            "checkpoint": model_filenames["checkpoint"],
-            "width": meta.width,
-            "height": meta.height,
-            "steps": meta.steps,
-            "guidance": meta.cfg_scale,
-            "seed": meta.seed,
-        }
-        return text2img_flux(**kwargs)
-
-    else:
-        supported = sorted(set(BASE_MODEL_MAP.values()))
-        raise ValueError(
-            f"Unsupported base model: '{meta.base_model_raw}'\n"
-            f"  Supported: {', '.join(supported)}"
-        )
+    return workflow_fn(**kwargs)
 
 
 # ── Summary Display ──────────────────────────────────────────────────────
@@ -660,7 +692,7 @@ def clone_from_civitai(
 
     # 5. Generate workflow
     console.print("\n[bold]Generating workflow...[/]")
-    wf = generate_clone_workflow(meta, model_filenames)
+    wf = generate_clone_workflow(meta, model_filenames, config=cfg)
 
     # 6. Save
     out_dir = Path(output_dir)

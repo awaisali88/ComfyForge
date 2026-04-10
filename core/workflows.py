@@ -147,6 +147,7 @@ def text2img_flux(
     checkpoint: str = "flux1-dev.safetensors",
     clip_files: list[str] | None = None,
     vae: str = "ae.safetensors",
+    loras: list[dict] | None = None,
     width: int = 1024,
     height: int = 1024,
     steps: int = 20,
@@ -166,6 +167,20 @@ def text2img_flux(
     })
 
     vae_node = b.add("VAELoader", {"vae_name": vae})
+
+    # LoRA chain (applied to model from UNETLoader)
+    model_out = unet
+    model_idx = 0
+    for lora_info in (loras or []):
+        lora_name = lora_info if isinstance(lora_info, str) else lora_info["filename"]
+        strength = 0.8 if isinstance(lora_info, str) else lora_info.get("strength", 0.8)
+        lora_node = b.add("LoraLoaderModelOnly", {
+            "lora_name": lora_name,
+            "strength_model": strength,
+        })
+        lora_node.link("model", model_out, model_idx)
+        model_out = lora_node
+        model_idx = 0
 
     cond = b.add("CLIPTextEncode", {"text": prompt})
     cond.link("clip", clip)
@@ -188,7 +203,7 @@ def text2img_flux(
         "scheduler": "simple",
         "denoise": 1.0,
     })
-    sampler_node.link("model", unet)
+    sampler_node.link("model", model_out, model_idx)
     sampler_node.link("positive", guidance_node)
     sampler_node.link("negative", b.add("ConditioningZeroOut").link("conditioning", cond))
     sampler_node.link("latent_image", latent)
@@ -447,6 +462,76 @@ def img2vid_wan(
         "save_output": True,
     })
     combine.link("images", decode)
+
+    return b.to_dict()
+
+
+def text2img_zimageturbo(
+    prompt: str,
+    checkpoint: str = "zImageTurbo_turbo.safetensors",
+    clip: str = "qwen_3_4b.safetensors",
+    vae: str = "ae.safetensors",
+    loras: list[dict] | None = None,
+    width: int = 1024,
+    height: int = 1024,
+    steps: int = 8,
+    guidance: float = 1.0,
+    seed: int = -1,
+) -> dict:
+    """Z-Image-Turbo text-to-image workflow (Lumina architecture)."""
+    b = WorkflowBuilder()
+
+    unet = b.add("UNETLoader", {"unet_name": checkpoint, "weight_dtype": "default"})
+
+    clip_node = b.add("CLIPLoader", {"clip_name": clip, "type": "ltxv"})
+
+    vae_node = b.add("VAELoader", {"vae_name": vae})
+
+    # LoRA chain
+    model_out = unet
+    model_idx = 0
+    for lora_info in (loras or []):
+        lora_name = lora_info if isinstance(lora_info, str) else lora_info["filename"]
+        strength = 0.8 if isinstance(lora_info, str) else lora_info.get("strength", 0.8)
+        lora_node = b.add("LoraLoaderModelOnly", {
+            "lora_name": lora_name,
+            "strength_model": strength,
+        })
+        lora_node.link("model", model_out, model_idx)
+        model_out = lora_node
+        model_idx = 0
+
+    cond = b.add("CLIPTextEncode", {"text": prompt})
+    cond.link("clip", clip_node)
+
+    guidance_node = b.add("FluxGuidance", {"guidance": guidance})
+    guidance_node.link("conditioning", cond)
+
+    latent = b.add("EmptySD3LatentImage", {
+        "width": width,
+        "height": height,
+        "batch_size": 1,
+    })
+
+    sampler_node = b.add("KSampler", {
+        "seed": seed if seed >= 0 else _random_seed(),
+        "steps": steps,
+        "cfg": 1.0,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 1.0,
+    })
+    sampler_node.link("model", model_out, model_idx)
+    sampler_node.link("positive", guidance_node)
+    sampler_node.link("negative", b.add("ConditioningZeroOut").link("conditioning", cond))
+    sampler_node.link("latent_image", latent)
+
+    decode = b.add("VAEDecode")
+    decode.link("samples", sampler_node)
+    decode.link("vae", vae_node)
+
+    save = b.add("SaveImage", {"filename_prefix": "comfyforge_zimageturbo"})
+    save.link("images", decode)
 
     return b.to_dict()
 

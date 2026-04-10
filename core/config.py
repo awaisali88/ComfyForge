@@ -143,6 +143,28 @@ class Config:
             return yaml.safe_load(p.read_text()) or {}
         return {}
 
+    def get_architecture(self, base_model_name: str) -> tuple[str, dict[str, Any]]:
+        """Look up a CivitAI baseModel name in the architectures registry.
+
+        Returns (arch_key, arch_dict). Falls back to 'sdxl' if not found.
+        """
+        archs = self._data.get("architectures", {})
+        # Direct key match
+        if base_model_name in archs:
+            return base_model_name, archs[base_model_name]
+        # Search aliases
+        for key, arch in archs.items():
+            if base_model_name in arch.get("aliases", []):
+                return key, arch
+        # Guess from name
+        lower = base_model_name.lower()
+        if "flux" in lower:
+            return "flux", archs.get("flux", {})
+        if "xl" in lower or "sdxl" in lower or "pony" in lower:
+            return "sdxl", archs.get("sdxl", {})
+        # Default to sdxl
+        return "sdxl", archs.get("sdxl", {})
+
     @classmethod
     def reset(cls):
         cls._instance = None

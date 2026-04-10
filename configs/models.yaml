@@ -189,13 +189,40 @@ models:
   - https://huggingface.co/stabilityai/control-lora/resolve/main/control-LoRAs-rank256/control-lora-depth-rank256.safetensors
 - id: zimaget_zidiusart_melancholy
   filename: zImageT_zidiusArt_melancholy.safetensors
-  type: checkpoint
+  type: lora
   size_gb: 0
   tags:
   - checkpoint
   - auto-discovered
   sources:
   - https://civitai.com/api/download/models/2626149
+- id: zimageturbo_turbo
+  filename: zImageTurbo_turbo.safetensors
+  type: diffusion_model
+  size_gb: 0
+  tags:
+  - checkpoint
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/2442439
+- id: catcitronanimetreasure_ilv10
+  filename: catCitronAnimeTreasure_ilV10.safetensors
+  type: checkpoint
+  size_gb: 0
+  tags:
+  - checkpoint
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/2034861
+- id: usadapekoraixl
+  filename: UsadaPekoraIXL.safetensors
+  type: lora
+  size_gb: 0
+  tags:
+  - lora
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/2827161
 type_directories:
   checkpoint: checkpoints
   lora: loras
