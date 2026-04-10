@@ -332,7 +332,7 @@ class ModelManager:
             search_name = filename.replace(".safetensors", "").replace(".ckpt", "").replace(".pth", "")
             with httpx.Client(timeout=30) as client:
                 headers = {}
-                token = os.getenv("HF_TOKEN", "")
+                token = self.cfg.hf_token or ""
                 if token:
                     headers["Authorization"] = f"Bearer {token}"
 
@@ -582,7 +582,7 @@ class ModelManager:
 
         # HuggingFace token support
         if "huggingface.co" in url:
-            token = os.getenv("HF_TOKEN", "")
+            token = self.cfg.hf_token or ""
             if token:
                 headers["Authorization"] = f"Bearer {token}"
 

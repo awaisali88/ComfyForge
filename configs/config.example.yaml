@@ -39,6 +39,11 @@ firebase:
   # Storage bucket for private model mirrors
   bucket: "your-project.appspot.com"
 
+huggingface:
+  # HuggingFace API token for downloading gated/private models
+  # Get yours at https://huggingface.co/settings/tokens
+  token: ""
+
 firecrawl:
   # FireCrawl API key for web-search model discovery (last-resort fallback)
   api_key: "fc-ebeb763d7538425baf0235a629456006"

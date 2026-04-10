@@ -86,6 +86,11 @@ class Config:
         return self._data.get("firebase", {}).get("bucket")
 
     @property
+    def hf_token(self) -> str | None:
+        token = self._data.get("huggingface", {}).get("token", "")
+        return token or os.getenv("HF_TOKEN")
+
+    @property
     def firecrawl_api_key(self) -> str | None:
         key = self._data.get("firecrawl", {}).get("api_key", "")
         return key or os.getenv("FIRECRAWL_API_KEY")
