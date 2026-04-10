@@ -223,6 +223,33 @@ models:
   - auto-discovered
   sources:
   - https://civitai.com/api/download/models/2827161
+- id: animij_v10
+  filename: animij_v10.safetensors
+  type: checkpoint
+  size_gb: 0
+  tags:
+  - checkpoint
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/2827109
+- id: amixillustrious_amix
+  filename: aMixIllustrious_aMix.safetensors
+  type: checkpoint
+  size_gb: 0
+  tags:
+  - checkpoint
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/1915059
+- id: lazymixrealamateur_v40
+  filename: lazymixRealAmateur_v40.ckpt
+  type: checkpoint
+  size_gb: 0
+  tags:
+  - checkpoint
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/300972?type=Model&format=PickleTensor&size=full&fp=fp32
 type_directories:
   checkpoint: checkpoints
   lora: loras

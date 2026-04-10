@@ -217,6 +217,15 @@ def _api_headers(config=None) -> dict[str, str]:
     return headers
 
 
+def _nsfw_params(config=None) -> dict[str, str | int]:
+    """Return NSFW query params if an API token is available."""
+    headers = _api_headers(config)
+    if "Authorization" in headers:
+        # browsingLevel bitmask: 1=PG | 2=PG13 | 4=R | 8=X | 16=XXX → 31 = all
+        return {"nsfw": "X", "browsingLevel": 31}
+    return {}
+
+
 def _fetch_model_version(version_id: int, config=None) -> dict:
     """GET /api/v1/model-versions/{id}."""
     with httpx.Client(timeout=30) as client:
@@ -229,12 +238,22 @@ def _fetch_model_version(version_id: int, config=None) -> dict:
 
 
 def _fetch_image(image_id: int, config=None) -> dict:
-    """Fetch a single image by ID via GET /api/v1/images?imageId={id}."""
+    """Fetch a single image by ID via GET /api/v1/images?imageId={id}.
+
+    Includes nsfw and browsingLevel params so NSFW/R-rated/X-rated images
+    are returned when using an authenticated API token.
+    """
+    headers = _api_headers(config)
+    has_token = "Authorization" in headers
+
+    params: dict[str, str | int] = {"imageId": image_id}
+    params.update(_nsfw_params(config))
+
     with httpx.Client(timeout=30) as client:
         resp = client.get(
             f"{CIVITAI_API}/images",
-            params={"imageId": image_id},
-            headers=_api_headers(config),
+            params=params,
+            headers=headers,
         )
         if resp.status_code == 403:
             raise RuntimeError(
@@ -246,8 +265,14 @@ def _fetch_image(image_id: int, config=None) -> dict:
         data = resp.json()
         items = data.get("items", [])
         if not items:
+            hint = ""
+            if not has_token:
+                hint = (
+                    "\n  If the image is NSFW, set CIVITAI_API_TOKEN in config.yaml or env.\n"
+                    "  Get one at: https://civitai.com/user/account -> API Keys"
+                )
             raise ValueError(
-                f"CivitAI image {image_id} not found.\n"
+                f"CivitAI image {image_id} not found.{hint}\n"
                 "  The image may have been removed or the ID may be incorrect."
             )
         return items[0]
@@ -255,10 +280,12 @@ def _fetch_image(image_id: int, config=None) -> dict:
 
 def _fetch_post_images(post_id: int, config=None) -> list[dict]:
     """GET /api/v1/images?postId={id} to get images from a post."""
+    params: dict[str, str | int] = {"postId": post_id, "limit": 20}
+    params.update(_nsfw_params(config))
     with httpx.Client(timeout=30) as client:
         resp = client.get(
             f"{CIVITAI_API}/images",
-            params={"postId": post_id, "limit": 20},
+            params=params,
             headers=_api_headers(config),
         )
         resp.raise_for_status()
