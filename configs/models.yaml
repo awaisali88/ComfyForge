@@ -1,0 +1,176 @@
+# ──────────────────────────────────────────────
+# ComfyForge Model Registry
+# ──────────────────────────────────────────────
+# Each model has:
+#   filename   - saved as this name
+#   type       - checkpoint | lora | vae | clip | controlnet | motion | upscale | svd | wan
+#   sources    - ordered list of download URLs (first working wins)
+#   size_gb    - approx size for progress display
+#   sha256     - optional integrity check
+#   tags       - used for auto-selection from prompts
+
+models:
+
+  # ── SDXL ──────────────────────────────────
+  - id: sdxl_base
+    filename: sd_xl_base_1.0.safetensors
+    type: checkpoint
+    size_gb: 6.5
+    tags: [sdxl, base, general, photorealistic, artistic]
+    sources:
+      - https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors
+
+  - id: sdxl_vae
+    filename: sdxl_vae.safetensors
+    type: vae
+    size_gb: 0.3
+    tags: [sdxl, vae]
+    sources:
+      - https://huggingface.co/stabilityai/sdxl-vae/resolve/main/sdxl_vae.safetensors
+
+  # ── Flux ──────────────────────────────────
+  - id: flux_dev
+    filename: flux1-dev.safetensors
+    type: checkpoint
+    size_gb: 23.8
+    tags: [flux, dev, high-quality, photorealistic]
+    sources:
+      - https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/flux1-dev.safetensors
+
+  - id: flux_schnell
+    filename: flux1-schnell.safetensors
+    type: checkpoint
+    size_gb: 23.8
+    tags: [flux, schnell, fast]
+    sources:
+      - https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/flux1-schnell.safetensors
+
+  - id: flux_ae
+    filename: ae.safetensors
+    type: vae
+    size_gb: 0.3
+    tags: [flux, vae]
+    sources:
+      - https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/ae.safetensors
+
+  - id: flux_t5xxl
+    filename: t5xxl_fp16.safetensors
+    type: clip
+    size_gb: 9.5
+    tags: [flux, clip, t5]
+    sources:
+      - https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp16.safetensors
+
+  - id: flux_clip_l
+    filename: clip_l.safetensors
+    type: clip
+    size_gb: 0.2
+    tags: [flux, clip]
+    sources:
+      - https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors
+
+  # ── SVD (Stable Video Diffusion) ──────────
+  - id: svd_xt
+    filename: svd_xt_1_1.safetensors
+    type: svd
+    size_gb: 9.5
+    tags: [video, svd, img2vid]
+    sources:
+      - https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt-1-1/resolve/main/svd_xt_1_1.safetensors
+
+  # ── AnimateDiff ───────────────────────────
+  - id: animatediff_sdxl
+    filename: mm_sdxl_v10_beta.safetensors
+    type: motion
+    size_gb: 1.5
+    tags: [video, animatediff, sdxl, motion]
+    sources:
+      - https://huggingface.co/guoyww/animatediff/resolve/main/mm_sdxl_v10_beta.safetensors
+
+  - id: animatediff_sd15
+    filename: mm_sd_v15_v2.safetensors
+    type: motion
+    size_gb: 1.5
+    tags: [video, animatediff, sd15, motion]
+    sources:
+      - https://huggingface.co/guoyww/animatediff/resolve/main/mm_sd_v15_v2.safetensors
+
+  # ── Wan2.1 ────────────────────────────────
+  - id: wan_t2v
+    filename: wan2.1_t2v_14B_fp16.safetensors
+    type: wan
+    size_gb: 28.0
+    tags: [video, wan, text2vid, high-quality]
+    sources:
+      - https://huggingface.co/Wan-AI/Wan2.1-T2V-14B/resolve/main/diffusion_pytorch_model.safetensors
+
+  - id: wan_i2v
+    filename: wan2.1_i2v_480p_14B_fp16.safetensors
+    type: wan
+    size_gb: 28.0
+    tags: [video, wan, img2vid, high-quality]
+    sources:
+      - https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P/resolve/main/diffusion_pytorch_model.safetensors
+
+  # ── LoRAs (common examples) ───────────────
+  - id: detail_tweaker_xl
+    filename: add-detail-xl.safetensors
+    type: lora
+    size_gb: 0.4
+    tags: [lora, sdxl, detail, enhancer]
+    sources:
+      - https://civitai.com/api/download/models/135867
+
+  - id: lcm_lora_sdxl
+    filename: lcm-lora-sdxl.safetensors
+    type: lora
+    size_gb: 0.4
+    tags: [lora, sdxl, lcm, fast, speed]
+    sources:
+      - https://huggingface.co/latent-consistency/lcm-lora-sdxl/resolve/main/pytorch_lora_weights.safetensors
+
+  # ── Upscalers ─────────────────────────────
+  - id: realesrgan_x4
+    filename: RealESRGAN_x4plus.pth
+    type: upscale
+    size_gb: 0.06
+    tags: [upscale, 4x, realesrgan]
+    sources:
+      - https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth
+
+  - id: realesrgan_anime
+    filename: RealESRGAN_x4plus_anime_6B.pth
+    type: upscale
+    size_gb: 0.06
+    tags: [upscale, 4x, anime]
+    sources:
+      - https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth
+
+  # ── ControlNet ────────────────────────────
+  - id: controlnet_canny_xl
+    filename: control-lora-canny-rank256.safetensors
+    type: controlnet
+    size_gb: 0.7
+    tags: [controlnet, sdxl, canny, edges]
+    sources:
+      - https://huggingface.co/stabilityai/control-lora/resolve/main/control-LoRAs-rank256/control-lora-canny-rank256.safetensors
+
+  - id: controlnet_depth_xl
+    filename: control-lora-depth-rank256.safetensors
+    type: controlnet
+    size_gb: 0.7
+    tags: [controlnet, sdxl, depth]
+    sources:
+      - https://huggingface.co/stabilityai/control-lora/resolve/main/control-LoRAs-rank256/control-lora-depth-rank256.safetensors
+
+# ── Type → Directory mapping ────────────────
+type_directories:
+  checkpoint: checkpoints
+  lora: loras
+  vae: vae
+  clip: clip
+  controlnet: controlnet
+  motion: animatediff_models
+  upscale: upscale_models
+  svd: checkpoints
+  wan: checkpoints

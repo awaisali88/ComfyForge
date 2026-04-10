@@ -1,0 +1,89 @@
+# ──────────────────────────────────────────────
+# ComfyForge Configuration
+# ──────────────────────────────────────────────
+
+comfyui:
+  # Path to your ComfyUI installation
+  # For ComfyUI Desktop, this is where the models/ folder lives
+  # Example: "F:/ComfyUI desktop" or "D:/ComfyUI"
+  path: "F:/ComfyUI desktop"
+  host: "127.0.0.1"
+  port: 8188
+  # Auto-start ComfyUI if not running
+  auto_start: true
+
+paths:
+  # Where generated outputs go
+  output: "D:/ComfyForge/outputs"
+  # Temp workspace
+  temp: "D:/ComfyForge/temp"
+  # Custom workflows dir (optional overrides)
+  workflows: "D:/ComfyForge/workflows"
+
+models:
+  # ComfyUI model directories (auto-detected from comfyui.path if blank)
+  checkpoints: ""   # defaults to {comfyui.path}/models/checkpoints
+  loras: ""          # defaults to {comfyui.path}/models/loras
+  vae: ""            # defaults to {comfyui.path}/models/vae
+  controlnet: ""     # defaults to {comfyui.path}/models/controlnet
+  clip: ""           # defaults to {comfyui.path}/models/clip
+  upscale: ""        # defaults to {comfyui.path}/models/upscale_models
+  animatediff: ""    # defaults to {comfyui.path}/models/animatediff_models
+  svd: ""            # defaults to {comfyui.path}/models/svd
+
+firebase:
+  # Path to your Firebase service account JSON
+  credentials: "configs/firebase-service-account.json"
+  # Firestore collection that stores model download links
+  collection: "comfyforge_models"
+  # Storage bucket for private model mirrors
+  bucket: "your-project.appspot.com"
+
+defaults:
+  # Default generation settings
+  image:
+    width: 1024
+    height: 1024
+    steps: 25
+    cfg: 7.0
+    sampler: "euler_ancestral"
+    scheduler: "normal"
+    batch_size: 1
+  video:
+    frames: 24
+    fps: 8
+    motion_strength: 0.7
+  audio:
+    engine: "bark"           # bark | f5tts | kokoro
+    voice: "v2/en_speaker_6"
+
+# Preferred model stacks per pipeline
+stacks:
+  text2img:
+    checkpoint: "sd_xl_base_1.0.safetensors"
+    vae: "sdxl_vae.safetensors"
+    loras: []
+
+  text2img_flux:
+    checkpoint: "flux1-dev.safetensors"
+    clip: ["t5xxl_fp16.safetensors", "clip_l.safetensors"]
+    vae: "ae.safetensors"
+    loras: []
+
+  img2vid:
+    model: "svd_xt_1_1.safetensors"
+
+  img2vid_animatediff:
+    checkpoint: "sd_xl_base_1.0.safetensors"
+    motion_module: "mm_sdxl_v10_beta.safetensors"
+    loras: []
+
+  img2vid_wan:
+    checkpoint: "wan2.1_i2v_480p_14B_fp16.safetensors"
+
+  text2vid_wan:
+    checkpoint: "wan2.1_t2v_14B_fp16.safetensors"
+
+  audio:
+    bark_model: "suno/bark"
+    f5tts_model: "SWivid/F5-TTS"
