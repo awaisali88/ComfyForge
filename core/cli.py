@@ -139,10 +139,10 @@ def clone_civitai(
             no_download=no_download,
             config=cfg,
         )
-        console.print(f"\n[bold green]✓ Workflow saved → {path}[/]")
-        console.print("  Load in ComfyUI: Menu → Load → select the JSON file")
+        console.print(f"\n[bold green]Workflow saved -> {path}[/]")
+        console.print("  Load in ComfyUI: Menu -> Load -> select the JSON file")
     except Exception as e:
-        console.print(f"\n[bold red]✗ {e}[/]")
+        console.print(f"\n[bold red]Error: {e}[/]")
         raise typer.Exit(1)
 
 

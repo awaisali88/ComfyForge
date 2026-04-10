@@ -228,16 +228,11 @@ async def clone_civitai_preview(req: CloneRequest):
 
 @app.post("/api/workflow-export")
 async def workflow_export(req: WorkflowExportRequest):
-    """Export a ComfyUI workflow JSON."""
-    import sys
-    root = str(Path(__file__).parent.parent)
-    if root not in sys.path:
-        sys.path.insert(0, root)
-
-    from workflow_export import (
-        make_text2img_sdxl, make_text2img_flux,
-        make_img2vid_svd, make_img2vid_animatediff,
-        make_text2vid_wan, make_img2vid_wan,
+    """Export a ComfyUI workflow JSON (API format)."""
+    from core.workflows import (
+        text2img_sdxl, text2img_flux,
+        img2vid_svd, img2vid_animatediff,
+        text2vid_wan, img2vid_wan,
     )
 
     try:
@@ -261,7 +256,7 @@ async def workflow_export(req: WorkflowExportRequest):
                 kwargs["cfg"] = req.cfg
             if req.seed != -1:
                 kwargs["seed"] = req.seed
-            wf = make_text2img_sdxl(**kwargs)
+            wf = text2img_sdxl(**kwargs)
 
         elif template == "text2img_flux":
             kwargs["prompt"] = req.prompt
@@ -277,7 +272,7 @@ async def workflow_export(req: WorkflowExportRequest):
                 kwargs["guidance"] = req.cfg
             if req.seed != -1:
                 kwargs["seed"] = req.seed
-            wf = make_text2img_flux(**kwargs)
+            wf = text2img_flux(**kwargs)
 
         elif template == "text2vid_wan":
             kwargs["prompt"] = req.prompt
@@ -296,9 +291,7 @@ async def workflow_export(req: WorkflowExportRequest):
                 kwargs["seed"] = req.seed
             if req.frames:
                 kwargs["frames"] = req.frames
-            if req.fps:
-                kwargs["fps"] = req.fps
-            wf = make_text2vid_wan(**kwargs)
+            wf = text2vid_wan(**kwargs)
 
         elif template == "img2vid_svd":
             kwargs["image_path"] = req.image_path or "input.png"
@@ -312,7 +305,7 @@ async def workflow_export(req: WorkflowExportRequest):
                 kwargs["cfg"] = req.cfg
             if req.seed != -1:
                 kwargs["seed"] = req.seed
-            wf = make_img2vid_svd(**kwargs)
+            wf = img2vid_svd(**kwargs)
 
         elif template == "img2vid_animatediff":
             kwargs["prompt"] = req.prompt
@@ -328,7 +321,7 @@ async def workflow_export(req: WorkflowExportRequest):
                 kwargs["cfg"] = req.cfg
             if req.seed != -1:
                 kwargs["seed"] = req.seed
-            wf = make_img2vid_animatediff(**kwargs)
+            wf = img2vid_animatediff(**kwargs)
 
         elif template == "img2vid_wan":
             kwargs["prompt"] = req.prompt
@@ -344,7 +337,7 @@ async def workflow_export(req: WorkflowExportRequest):
                 kwargs["cfg"] = req.cfg
             if req.seed != -1:
                 kwargs["seed"] = req.seed
-            wf = make_img2vid_wan(**kwargs)
+            wf = img2vid_wan(**kwargs)
 
         else:
             return JSONResponse(
@@ -357,12 +350,12 @@ async def workflow_export(req: WorkflowExportRequest):
         out_dir.mkdir(parents=True, exist_ok=True)
         ts = int(time.time())
         dest = out_dir / f"{template}_{ts}.json"
-        wf.save(str(dest))
+        dest.write_text(json.dumps(wf, indent=2))
 
         return {
             "success": True,
             "workflow_path": str(dest),
-            "workflow_json": wf.export(),
+            "workflow_json": wf,
         }
 
     except Exception as e:

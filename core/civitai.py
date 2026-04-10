@@ -216,49 +216,61 @@ def map_sampler(civitai_sampler: str | None) -> tuple[str, str]:
 # ── CivitAI API ─────────────────────────────────────────────────────────
 
 
-def _api_headers() -> dict[str, str]:
+def _api_headers(config=None) -> dict[str, str]:
     headers = {"Content-Type": "application/json"}
-    token = os.getenv("CIVITAI_API_TOKEN", "")
+    token = ""
+    if config:
+        token = config.civitai_api_token or ""
+    if not token:
+        token = os.getenv("CIVITAI_API_TOKEN", "")
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return headers
 
 
-def _fetch_model_version(version_id: int) -> dict:
+def _fetch_model_version(version_id: int, config=None) -> dict:
     """GET /api/v1/model-versions/{id}."""
     with httpx.Client(timeout=30) as client:
         resp = client.get(
             f"{CIVITAI_API}/model-versions/{version_id}",
-            headers=_api_headers(),
+            headers=_api_headers(config),
         )
         resp.raise_for_status()
         return resp.json()
 
 
-def _fetch_image(image_id: int) -> dict:
-    """GET /api/v1/images/{id}."""
+def _fetch_image(image_id: int, config=None) -> dict:
+    """Fetch a single image by ID via GET /api/v1/images?imageId={id}."""
     with httpx.Client(timeout=30) as client:
         resp = client.get(
-            f"{CIVITAI_API}/images/{image_id}",
-            headers=_api_headers(),
+            f"{CIVITAI_API}/images",
+            params={"imageId": image_id},
+            headers=_api_headers(config),
         )
         if resp.status_code == 403:
             raise RuntimeError(
                 f"CivitAI returned 403 for image {image_id}.\n"
-                "  Set CIVITAI_API_TOKEN env var with your API key.\n"
+                "  Set CIVITAI_API_TOKEN in config.yaml or as env var.\n"
                 "  Get one at: https://civitai.com/user/account -> API Keys"
             )
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        items = data.get("items", [])
+        if not items:
+            raise ValueError(
+                f"CivitAI image {image_id} not found.\n"
+                "  The image may have been removed or the ID may be incorrect."
+            )
+        return items[0]
 
 
-def _fetch_post_images(post_id: int) -> list[dict]:
+def _fetch_post_images(post_id: int, config=None) -> list[dict]:
     """GET /api/v1/images?postId={id} to get images from a post."""
     with httpx.Client(timeout=30) as client:
         resp = client.get(
             f"{CIVITAI_API}/images",
             params={"postId": post_id, "limit": 20},
-            headers=_api_headers(),
+            headers=_api_headers(config),
         )
         resp.raise_for_status()
         data = resp.json()
@@ -268,9 +280,9 @@ def _fetch_post_images(post_id: int) -> list[dict]:
 # ── Metadata Extraction ─────────────────────────────────────────────────
 
 
-def fetch_image_metadata(image_id: int) -> CivitaiGenMeta:
+def fetch_image_metadata(image_id: int, config=None) -> CivitaiGenMeta:
     """Fetch a CivitAI image and parse all generation metadata."""
-    data = _fetch_image(image_id)
+    data = _fetch_image(image_id, config)
     meta = data.get("meta")
     if not meta:
         raise ValueError(
@@ -319,7 +331,7 @@ def fetch_image_metadata(image_id: int) -> CivitaiGenMeta:
     checkpoint_filename = None
     if checkpoint_vid:
         try:
-            mv = _fetch_model_version(checkpoint_vid)
+            mv = _fetch_model_version(checkpoint_vid, config)
             base_model_raw = mv.get("baseModel", "")
             files = mv.get("files", [])
             if files:
@@ -376,12 +388,43 @@ def _float_or_none(val) -> float | None:
 # ── Model Resolution & Download ─────────────────────────────────────────
 
 
+def _resolve_civitai_version(version_id: int, config=None) -> tuple[str | None, str | None]:
+    """Fetch filename and direct download URL from a CivitAI model version ID.
+
+    Returns (filename, download_url) or (None, None) on failure.
+    """
+    try:
+        mv = _fetch_model_version(version_id, config)
+        files = mv.get("files", [])
+        if files:
+            return files[0].get("name"), files[0].get("downloadUrl")
+    except Exception as e:
+        console.print(f"  [yellow]WARNING: Could not fetch CivitAI version {version_id}: {e}[/]")
+    return None, None
+
+
+def _ensure_civitai_model(
+    mm,
+    filename: str,
+    model_type: str,
+    download_url: str,
+) -> None:
+    """Register and download a model directly from CivitAI -- no HF/FireCrawl fallback."""
+    entry = mm._auto_register(filename, model_type, [download_url])
+    mm._ensure(entry)
+
+
 def resolve_and_download_models(
     meta: CivitaiGenMeta,
     mm,  # ModelManager -- avoid circular import
     no_download: bool = False,
+    config=None,
 ) -> dict[str, str | list[dict]]:
     """Resolve all model references to local filenames and download as needed.
+
+    When a CivitAI version ID is available, downloads directly from CivitAI
+    using the model version's download URL. Falls back to ensure_or_search()
+    only when no version ID is available.
 
     Returns dict ready to be passed as kwargs to workflow factory:
       {
@@ -394,28 +437,28 @@ def resolve_and_download_models(
 
     # ── Checkpoint ──
     ckpt_filename = meta.checkpoint_filename
-    if not ckpt_filename and meta.checkpoint_version_id:
-        try:
-            mv = _fetch_model_version(meta.checkpoint_version_id)
-            files = mv.get("files", [])
-            if files:
-                ckpt_filename = files[0]["name"]
-                download_url = files[0].get("downloadUrl", "")
-                if download_url and not no_download:
-                    mm._auto_register(ckpt_filename, "checkpoint", [download_url])
-        except Exception as e:
-            console.print(f"  [yellow]WARNING: Could not fetch checkpoint info: {e}[/]")
+    ckpt_download_url = None
+
+    # Resolve filename and download URL from version ID
+    if meta.checkpoint_version_id:
+        vid_filename, vid_url = _resolve_civitai_version(meta.checkpoint_version_id, config)
+        if vid_filename:
+            ckpt_filename = vid_filename
+        if vid_url:
+            ckpt_download_url = vid_url
 
     if not ckpt_filename:
-        # Fall back to the model name with .safetensors
         ckpt_filename = meta.checkpoint_name.replace(" ", "_") + ".safetensors"
 
     if not no_download:
         console.print(f"\n  [bold]Checkpoint:[/] {ckpt_filename}")
         try:
-            mm.ensure_or_search(ckpt_filename, "checkpoint")
+            if ckpt_download_url:
+                _ensure_civitai_model(mm, ckpt_filename, "checkpoint", ckpt_download_url)
+            else:
+                mm.ensure_or_search(ckpt_filename, "checkpoint")
         except Exception as e:
-            console.print(f"  [red]✗ Could not download checkpoint: {e}[/]")
+            console.print(f"  [red]x Could not download checkpoint: {e}[/]")
 
     result["checkpoint"] = ckpt_filename
 
@@ -437,19 +480,15 @@ def resolve_and_download_models(
     lora_entries: list[dict] = []
     for lr in meta.loras:
         lora_filename = lr.filename
+        lora_download_url = None
 
-        # Fetch filename from version ID if we don't have it
-        if not lora_filename and lr.version_id:
-            try:
-                mv = _fetch_model_version(lr.version_id)
-                files = mv.get("files", [])
-                if files:
-                    lora_filename = files[0]["name"]
-                    download_url = files[0].get("downloadUrl", "")
-                    if download_url and not no_download:
-                        mm._auto_register(lora_filename, "lora", [download_url])
-            except Exception as e:
-                console.print(f"  [yellow]WARNING: Could not fetch LoRA '{lr.name}' info: {e}[/]")
+        # Resolve filename and download URL from version ID
+        if lr.version_id:
+            vid_filename, vid_url = _resolve_civitai_version(lr.version_id, config)
+            if vid_filename:
+                lora_filename = vid_filename
+            if vid_url:
+                lora_download_url = vid_url
 
         if not lora_filename:
             lora_filename = lr.name.replace(" ", "_") + ".safetensors"
@@ -457,7 +496,10 @@ def resolve_and_download_models(
         if not no_download:
             console.print(f"  [bold]LoRA:[/] {lora_filename} (strength: {lr.weight})")
             try:
-                mm.ensure_or_search(lora_filename, "lora")
+                if lora_download_url:
+                    _ensure_civitai_model(mm, lora_filename, "lora", lora_download_url)
+                else:
+                    mm.ensure_or_search(lora_filename, "lora")
             except Exception as e:
                 console.print(f"  [yellow]WARNING: Could not download LoRA '{lr.name}': {e}[/]")
 
@@ -470,21 +512,15 @@ def resolve_and_download_models(
 # ── Workflow Generation ──────────────────────────────────────────────────
 
 
-def generate_clone_workflow(meta: CivitaiGenMeta, model_filenames: dict):
-    """Generate a UIWorkflow that reproduces the CivitAI image."""
-    # Add parent dir to path so we can import workflow_export
-    root = Path(__file__).parent.parent
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
-
-    from workflow_export import make_text2img_sdxl, make_text2img_flux
+def generate_clone_workflow(meta: CivitaiGenMeta, model_filenames: dict) -> dict:
+    """Generate an API-format workflow dict that reproduces the CivitAI image."""
+    from .workflows import text2img_sdxl, text2img_flux
 
     if meta.base_model in ("sd15", "sdxl"):
         kwargs = {
             "prompt": meta.prompt,
             "negative": meta.negative_prompt or "blurry, low quality, watermark, text, deformed",
             "checkpoint": model_filenames["checkpoint"],
-            "vae": model_filenames.get("vae"),
             "loras": model_filenames.get("loras") or None,
             "width": meta.width,
             "height": meta.height,
@@ -494,7 +530,11 @@ def generate_clone_workflow(meta: CivitaiGenMeta, model_filenames: dict):
             "scheduler": meta.scheduler,
             "seed": meta.seed,
         }
-        wf = make_text2img_sdxl(**kwargs)
+        vae = model_filenames.get("vae")
+        if vae:
+            kwargs["vae"] = vae
+
+        wf = text2img_sdxl(**kwargs)
 
         if meta.hires_upscale:
             console.print(
@@ -521,7 +561,7 @@ def generate_clone_workflow(meta: CivitaiGenMeta, model_filenames: dict):
             "guidance": meta.cfg_scale,
             "seed": meta.seed,
         }
-        return make_text2img_flux(**kwargs)
+        return text2img_flux(**kwargs)
 
     else:
         supported = sorted(set(BASE_MODEL_MAP.values()))
@@ -593,7 +633,7 @@ def clone_from_civitai(
     # 2. Get image metadata
     if content_type == "post":
         console.print(f"  Fetching post #{content_id}...")
-        images = _fetch_post_images(content_id)
+        images = _fetch_post_images(content_id, cfg)
         # Find the first image with generation metadata
         image_data = None
         for img in images:
@@ -608,7 +648,7 @@ def clone_from_civitai(
         image_id = content_id
 
     console.print(f"  Fetching metadata for image #{image_id}...")
-    meta = fetch_image_metadata(image_id)
+    meta = fetch_image_metadata(image_id, cfg)
 
     # 3. Print summary
     _print_summary(meta)
@@ -616,7 +656,7 @@ def clone_from_civitai(
     # 4. Resolve and download models
     mm = ModelManager(cfg)
     console.print("\n[bold]Resolving models...[/]")
-    model_filenames = resolve_and_download_models(meta, mm, no_download=no_download)
+    model_filenames = resolve_and_download_models(meta, mm, no_download=no_download, config=cfg)
 
     # 5. Generate workflow
     console.print("\n[bold]Generating workflow...[/]")
@@ -631,5 +671,7 @@ def clone_from_civitai(
     else:
         dest = out_dir / f"clone_{image_id}.json"
 
-    wf.save(str(dest))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    import json
+    dest.write_text(json.dumps(wf, indent=2))
     return dest

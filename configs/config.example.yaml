@@ -44,6 +44,11 @@ huggingface:
   # Get yours at https://huggingface.co/settings/tokens
   token: ""
 
+civitai:
+  # CivitAI API token for downloading models
+  # Get yours at https://civitai.com/user/account -> API Keys
+  api_token: ""
+
 firecrawl:
   # FireCrawl API key for web-search model discovery (last-resort fallback)
   api_key: "fc-ebeb763d7538425baf0235a629456006"

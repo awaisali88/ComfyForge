@@ -374,7 +374,7 @@ class ModelManager:
             search_name = filename.replace(".safetensors", "").replace(".ckpt", "")
             with httpx.Client(timeout=30) as client:
                 headers = {}
-                token = os.getenv("CIVITAI_API_TOKEN", "")
+                token = self.cfg.civitai_api_token or os.getenv("CIVITAI_API_TOKEN", "")
                 if token:
                     headers["Authorization"] = f"Bearer {token}"
 
@@ -576,7 +576,7 @@ class ModelManager:
         headers = {}
         # CivitAI API token support
         if "civitai.com" in url:
-            token = os.getenv("CIVITAI_API_TOKEN", "")
+            token = self.cfg.civitai_api_token or os.getenv("CIVITAI_API_TOKEN", "")
             if token:
                 headers["Authorization"] = f"Bearer {token}"
 

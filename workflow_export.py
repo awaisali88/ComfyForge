@@ -63,7 +63,7 @@ class UINode:
             "id": self.id,
             "type": self.type,
             "pos": list(self.pos),
-            "size": {"0": self.size[0], "1": self.size[1]},
+            "size": [self.size[0], self.size[1]],
             "flags": {},
             "order": self.id,
             "mode": 0,
@@ -110,8 +110,8 @@ class UIWorkflow:
         self._nid += 1
         # Auto-layout: place nodes in a grid
         col = self._col
-        row_in_col = sum(1 for n in self.nodes if abs(n.pos[0] - col * 380) < 10)
         x = 50 + col * 380
+        row_in_col = sum(1 for n in self.nodes if abs(n.pos[0] - x) < 10)
         y = 50 + row_in_col * (height + 40)
 
         node = UINode(
@@ -1247,7 +1247,7 @@ def main():
                    "motion_module", "model", "guidance", "denoise", "batch_size",
                    "motion_bucket", "augmentation"):
             if k in args:
-                # image → image_path mapping
+                # image -> image_path mapping
                 actual_key = "image_path" if k == "image" else k
                 if actual_key in fn.__code__.co_varnames:
                     fn_kwargs[actual_key] = args[k]
