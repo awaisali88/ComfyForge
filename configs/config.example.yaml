@@ -4,9 +4,9 @@
 
 comfyui:
   # Path to your ComfyUI installation
-  # For ComfyUI Desktop, this is where the models/ folder lives
-  # Example: "F:/ComfyUI desktop" or "D:/ComfyUI"
-  path: "F:/ComfyUI desktop"
+  path: "C:/Users/awais/AppData/Local/Programs/ComfyUI/resources/ComfyUI"
+  # Data directory with models, custom_nodes, etc.
+  data_path: "D:/ComfyUI"
   host: "127.0.0.1"
   port: 8188
   # Auto-start ComfyUI if not running
@@ -14,11 +14,11 @@ comfyui:
 
 paths:
   # Where generated outputs go
-  output: "D:/ComfyForge/outputs"
+  output: "D:/Work/UraanAI/AI/comfy-gen/outputs"
   # Temp workspace
-  temp: "D:/ComfyForge/temp"
+  temp: "D:/Work/UraanAI/AI/comfy-gen/temp"
   # Custom workflows dir (optional overrides)
-  workflows: "D:/ComfyForge/workflows"
+  workflows: "D:/Work/UraanAI/AI/comfy-gen/workflows"
 
 models:
   # ComfyUI model directories (auto-detected from comfyui.path if blank)
@@ -38,6 +38,10 @@ firebase:
   collection: "comfyforge_models"
   # Storage bucket for private model mirrors
   bucket: "your-project.appspot.com"
+
+firecrawl:
+  # FireCrawl API key for web-search model discovery (last-resort fallback)
+  api_key: "fc-ebeb763d7538425baf0235a629456006"
 
 defaults:
   # Default generation settings

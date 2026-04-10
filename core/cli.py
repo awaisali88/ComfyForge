@@ -33,6 +33,11 @@ def generate(
         help="Video backend: svd | animatediff | wan"),
     frames: int = typer.Option(None, "--frames"),
     fps: int = typer.Option(None, "--fps"),
+    checkpoint: str = typer.Option(None, "--checkpoint", "--ckpt",
+        help="Override checkpoint model filename (auto-downloads if missing)"),
+    vae_model: str = typer.Option(None, "--vae", help="Override VAE model filename"),
+    lora: list[str] = typer.Option([], "--lora", "-l",
+        help="Add LoRA model(s) (auto-downloads if missing). Repeat for multiple."),
     config: str = typer.Option(None, "--config", "-c", help="Path to config.yaml"),
     use_flux: bool = typer.Option(False, "--flux", help="Use Flux instead of SDXL"),
 ):
@@ -50,6 +55,12 @@ def generate(
         overrides["fps"] = fps
     if use_flux:
         overrides["use_flux"] = True
+    if checkpoint:
+        overrides["checkpoint"] = checkpoint
+    if vae_model:
+        overrides["vae"] = vae_model
+    if lora:
+        overrides["loras"] = [{"filename": l, "strength": 1.0} for l in lora]
 
     pipe = Pipeline(cfg)
     result = pipe.run(

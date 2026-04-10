@@ -153,6 +153,25 @@ class Pipeline:
 
     # ── stage runners ────────────────────
 
+    def _ensure_override_models(self, overrides: dict):
+        """Download any custom model files specified in overrides."""
+        override_model_keys = {
+            "checkpoint": "checkpoint",
+            "vae": "vae",
+            "motion_module": "motion",
+        }
+        for key, model_type in override_model_keys.items():
+            if filename := overrides.get(key):
+                if isinstance(filename, str) and filename.endswith((".safetensors", ".ckpt", ".pth")):
+                    self.models.ensure_or_search(filename, model_type)
+
+        # Handle lora overrides
+        if loras := overrides.get("loras"):
+            for lora in (loras if isinstance(loras, list) else [loras]):
+                name = lora if isinstance(lora, str) else lora.get("filename", "")
+                if name:
+                    self.models.ensure_or_search(name, "lora")
+
     def _run_text2img(
         self, prompt: str, negative: str, stack: str | None,
         overrides: dict, result: PipelineResult,
@@ -170,6 +189,7 @@ class Pipeline:
         # Download models
         console.print("  Ensuring models…")
         self.models.ensure_stack(stack_name)
+        self._ensure_override_models(overrides)
 
         # Build workflow
         stack_cfg = self.cfg.stack(stack_name)
@@ -179,9 +199,9 @@ class Pipeline:
         if use_flux:
             wf = text2img_flux(
                 prompt=prompt,
-                checkpoint=stack_cfg.get("checkpoint", "flux1-dev.safetensors"),
+                checkpoint=overrides.get("checkpoint", stack_cfg.get("checkpoint", "flux1-dev.safetensors")),
                 clip_files=stack_cfg.get("clip"),
-                vae=stack_cfg.get("vae", "ae.safetensors"),
+                vae=overrides.get("vae", stack_cfg.get("vae", "ae.safetensors")),
                 width=overrides.get("width", defaults.get("width", 1024)),
                 height=overrides.get("height", defaults.get("height", 1024)),
                 steps=overrides.get("steps", defaults.get("steps", 20)),
@@ -192,9 +212,9 @@ class Pipeline:
             wf = text2img_sdxl(
                 prompt=prompt,
                 negative=negative,
-                checkpoint=stack_cfg.get("checkpoint", "sd_xl_base_1.0.safetensors"),
-                vae=stack_cfg.get("vae", "sdxl_vae.safetensors"),
-                loras=stack_cfg.get("loras", []),
+                checkpoint=overrides.get("checkpoint", stack_cfg.get("checkpoint", "sd_xl_base_1.0.safetensors")),
+                vae=overrides.get("vae", stack_cfg.get("vae", "sdxl_vae.safetensors")),
+                loras=overrides.get("loras", stack_cfg.get("loras", [])),
                 width=overrides.get("width", defaults.get("width", 1024)),
                 height=overrides.get("height", defaults.get("height", 1024)),
                 steps=overrides.get("steps", defaults.get("steps", 25)),
@@ -227,6 +247,7 @@ class Pipeline:
 
         console.print(f"  Backend: {backend}")
         self.models.ensure_stack(stack_name)
+        self._ensure_override_models(overrides)
 
         stack_cfg = self.cfg.stack(stack_name)
         vid_defaults = self.cfg.default("video")
@@ -280,6 +301,7 @@ class Pipeline:
         console.print(f"\n[bold cyan]Stage: {stage}[/]")
 
         self.models.ensure_stack("text2vid_wan")
+        self._ensure_override_models(overrides)
         stack_cfg = self.cfg.stack("text2vid_wan")
 
         t0 = time.time()

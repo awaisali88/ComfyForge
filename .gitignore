@@ -1,0 +1,70 @@
+# ──────────────────────────────────────────────
+# ComfyForge .gitignore
+# ──────────────────────────────────────────────
+
+# ── Python ──────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+ENV/
+
+# ── Secrets & credentials ──────────────────
+configs/config.yaml
+configs/firebase-service-account.json
+configs/*-credentials.json
+*.key
+*.pem
+.env
+.env.*
+
+# ── Generated outputs ──────────────────────
+outputs/
+exported_workflows/
+temp/
+
+# ── Models (large binary files) ────────────
+*.safetensors
+*.ckpt
+*.pth
+*.bin
+*.pt
+
+# ── OS files ───────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+
+# ── IDE / Editor ───────────────────────────
+# .vscode/
+# .idea/
+# *.sublime-project
+# *.sublime-workspace
+# .project
+# .classpath
+# .settings/
+
+# ── Logs ───────────────────────────────────
+*.log
+logs/
+
+# ── Misc ───────────────────────────────────
+.cache/
+*.bak
+*.tmp

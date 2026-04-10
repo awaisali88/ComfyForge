@@ -36,6 +36,11 @@ class Config:
         return Path(self._data["comfyui"]["path"])
 
     @property
+    def comfyui_data_path(self) -> Path:
+        """Data directory (models, custom_nodes, etc.) — falls back to comfyui_path."""
+        return Path(self._data["comfyui"].get("data_path") or self._data["comfyui"]["path"])
+
+    @property
     def comfyui_url(self) -> str:
         h = self._data["comfyui"]["host"]
         p = self._data["comfyui"]["port"]
@@ -60,19 +65,7 @@ class Config:
         # Load from models.yaml type_directories mapping
         registry = self._load_model_registry()
         subdir = registry.get("type_directories", {}).get(model_type, model_type)
-        candidate = self.comfyui_path / "models" / subdir
-        if candidate.exists():
-            return candidate
-        # Fallback: scan models/ for a close match (e.g. "loras" vs "lora")
-        models_root = self.comfyui_path / "models"
-        if models_root.exists():
-            for d in models_root.iterdir():
-                if d.is_dir() and d.name.lower().replace("_", "") in (
-                    subdir.lower().replace("_", ""),
-                    model_type.lower().replace("_", ""),
-                ):
-                    return d
-        return candidate  # return the canonical path even if it doesn't exist yet
+        return self.comfyui_data_path / "models" / subdir
 
     def stack(self, pipeline: str) -> dict[str, Any]:
         return self._data.get("stacks", {}).get(pipeline, {})
@@ -91,6 +84,11 @@ class Config:
     @property
     def firebase_bucket(self) -> str | None:
         return self._data.get("firebase", {}).get("bucket")
+
+    @property
+    def firecrawl_api_key(self) -> str | None:
+        key = self._data.get("firecrawl", {}).get("api_key", "")
+        return key or os.getenv("FIRECRAWL_API_KEY")
 
     @property
     def raw(self) -> dict:

@@ -26,6 +26,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# ── Model file patterns for auto-download detection ──
+_MODEL_EXTENSIONS = (".safetensors", ".ckpt", ".pth", ".bin")
+
 
 # ═══════════════════════════════════════════════════
 # ComfyUI Native Workflow Builder (UI format)
@@ -1021,10 +1024,10 @@ TEMPLATES = {
 
 def print_help():
     print("""
-╔══════════════════════════════════════════════════════════════╗
-║  ComfyForge Workflow Exporter                                ║
-║  Generates ComfyUI-native JSON — no execution, just files    ║
-╚══════════════════════════════════════════════════════════════╝
+================================================================
+  ComfyForge Workflow Exporter
+  Generates ComfyUI-native JSON -- no execution, just files
+================================================================
 
 Usage:
   python workflow_export.py <template> "prompt" [options]
@@ -1048,16 +1051,24 @@ Options:
   --frames N           Video frames (default 25)
   --fps N              Video FPS (default 8)
   --negative "text"    Negative prompt
-  --checkpoint FILE    Override checkpoint filename
+  --checkpoint FILE    Override checkpoint filename (auto-downloads if missing)
   --flux               Use Flux for text2img in full pipeline
   --video-backend X    svd | animatediff | wan (for full)
   --output DIR         Output directory (default: ./exported_workflows)
+  --no-download        Skip auto-download (just export, even if models are missing)
+
+Models are automatically downloaded if not found locally.
+The search order is: local files -> models.yaml registry -> HuggingFace -> CivitAI.
 
 Examples:
   python workflow_export.py text2img "A dragon over Lahore"
   python workflow_export.py text2img_flux "Photorealistic warrior" --steps 30
   python workflow_export.py img2vid_svd --image photo.png --frames 30
   python workflow_export.py full "Cyberpunk city" --flux --video-backend wan
+
+  # Use a custom checkpoint (auto-downloads if not found)
+  python workflow_export.py text2img "A warrior" --checkpoint "dreamshaperXL.safetensors"
+  python workflow_export.py text2img "A dragon" --no-download
 """)
 
 
@@ -1069,7 +1080,7 @@ def parse_args(argv: list[str]) -> dict:
         a = argv[i]
         if a.startswith("--"):
             key = a[2:].replace("-", "_")
-            if key in ("flux",):
+            if key in ("flux", "no_download"):
                 opts[key] = True
             elif i + 1 < len(argv):
                 val = argv[i + 1]
@@ -1089,6 +1100,92 @@ def parse_args(argv: list[str]) -> dict:
     return {"positional": positional, **opts}
 
 
+def _ensure_models_for_kwargs(kwargs: dict[str, Any], template: str, no_download: bool = False):
+    """Check all model filenames in kwargs and download missing ones.
+
+    Scans kwargs for values that look like model files (.safetensors, .ckpt, etc.)
+    and ensures they're available locally before workflow generation.
+    """
+    if no_download:
+        return
+
+    # Collect model filenames from kwargs + template defaults
+    model_files: list[tuple[str, str | None]] = []  # (filename, type_hint)
+
+    # Model param → type hint mapping
+    _param_type_hints = {
+        "checkpoint": "checkpoint",
+        "vae": "vae",
+        "model": None,
+        "motion_module": "motion",
+    }
+
+    for param, type_hint in _param_type_hints.items():
+        val = kwargs.get(param)
+        if val and isinstance(val, str) and any(val.endswith(ext) for ext in _MODEL_EXTENSIONS):
+            model_files.append((val, type_hint))
+
+    # CLIP files (can be list)
+    for param in ("clip_files",):
+        val = kwargs.get(param)
+        if val:
+            clips = val if isinstance(val, list) else [val]
+            for c in clips:
+                if isinstance(c, str) and any(c.endswith(ext) for ext in _MODEL_EXTENSIONS):
+                    model_files.append((c, "clip"))
+
+    # LoRAs
+    loras = kwargs.get("loras")
+    if loras:
+        for lora in loras:
+            name = lora if isinstance(lora, str) else lora.get("filename", "")
+            if name and any(name.endswith(ext) for ext in _MODEL_EXTENSIONS):
+                model_files.append((name, "lora"))
+
+    # Also check template defaults if no explicit overrides
+    _template_defaults = {
+        "text2img": [("sd_xl_base_1.0.safetensors", "checkpoint"), ("sdxl_vae.safetensors", "vae")],
+        "text2img_sdxl": [("sd_xl_base_1.0.safetensors", "checkpoint"), ("sdxl_vae.safetensors", "vae")],
+        "text2img_flux": [("flux1-dev.safetensors", "checkpoint"), ("ae.safetensors", "vae"),
+                          ("t5xxl_fp16.safetensors", "clip"), ("clip_l.safetensors", "clip")],
+        "img2vid_svd": [("svd_xt_1_1.safetensors", "svd")],
+        "img2vid_animatediff": [("sd_xl_base_1.0.safetensors", "checkpoint"),
+                                ("mm_sdxl_v10_beta.safetensors", "motion")],
+        "text2vid_wan": [("wan2.1_t2v_14B_fp16.safetensors", "wan")],
+        "img2vid_wan": [("wan2.1_i2v_480p_14B_fp16.safetensors", "wan")],
+    }
+
+    if template in _template_defaults:
+        for default_file, default_type in _template_defaults[template]:
+            # Only add if not overridden by kwargs
+            already_specified = any(f == default_file for f, _ in model_files)
+            if not already_specified:
+                model_files.append((default_file, default_type))
+
+    if not model_files:
+        return
+
+    # Download missing models
+    try:
+        sys.path.insert(0, str(Path(__file__).parent))
+        from core.config import Config
+        from core.models import ModelManager
+
+        Config.reset()
+        cfg = Config.load()
+        mm = ModelManager(cfg)
+
+        print("\n  Checking models…")
+        for filename, type_hint in model_files:
+            try:
+                mm.ensure_or_search(filename, type_hint)
+            except Exception as e:
+                print(f"  WARNING: Could not ensure {filename}: {e}")
+        print()
+    except ImportError as e:
+        print(f"  WARNING: Could not import model manager (run setup.py first): {e}")
+
+
 def main():
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
         print_help()
@@ -1103,6 +1200,7 @@ def main():
 
     template = pos[0]
     prompt = pos[1] if len(pos) > 1 else "A beautiful landscape"
+    no_download = args.pop("no_download", False) or args.pop("no-download", False)
 
     out_dir = Path(args.pop("output", "exported_workflows"))
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1112,16 +1210,24 @@ def main():
     if template == "full":
         use_flux = args.pop("flux", False)
         vb = args.pop("video_backend", "svd")
+
+        # Ensure models before export
+        full_kwargs = dict(args)
+        t2i_template = "text2img_flux" if use_flux else "text2img"
+        v_template = f"img2vid_{vb}" if vb != "svd" else "img2vid_svd"
+        _ensure_models_for_kwargs(full_kwargs, t2i_template, no_download)
+        _ensure_models_for_kwargs(full_kwargs, v_template, no_download)
+
         workflows = make_full_pipeline(prompt=prompt, use_flux=use_flux, video_backend=vb, **args)
         for name, wf in workflows.items():
             p = wf.save(out_dir / f"{name}_{ts}.json")
-            print(f"  ✓ {p}")
-        print(f"\n✓ Exported {len(workflows)} workflow files to {out_dir}/")
-        print("  Load them in ComfyUI: Menu → Load → select the JSON")
+            print(f"  OK: {p}")
+        print(f"\nOK: Exported {len(workflows)} workflow files to {out_dir}/")
+        print("  Load them in ComfyUI: Menu -> Load -> select the JSON")
         print("  For stage 2 (img2vid), update the LoadImage node with your actual output image.")
     else:
         if template not in TEMPLATES:
-            print(f"✗ Unknown template: {template}")
+            print(f"ERROR: Unknown template: {template}")
             print(f"  Available: {', '.join(TEMPLATES.keys())}")
             return
 
@@ -1141,11 +1247,14 @@ def main():
                 if actual_key in fn.__code__.co_varnames:
                     fn_kwargs[actual_key] = args[k]
 
+        # Ensure models before export
+        _ensure_models_for_kwargs(fn_kwargs, template, no_download)
+
         wf = fn(**fn_kwargs)
         filename = f"{template}_{ts}.json"
         p = wf.save(out_dir / filename)
-        print(f"\n  ✓ Exported: {p}")
-        print(f"  Load in ComfyUI: Menu → Load → {filename}")
+        print(f"\n  OK: Exported: {p}")
+        print(f"  Load in ComfyUI: Menu -> Load -> {filename}")
 
 
 if __name__ == "__main__":
