@@ -213,7 +213,7 @@ class Pipeline:
                 prompt=prompt,
                 negative=negative,
                 checkpoint=overrides.get("checkpoint", stack_cfg.get("checkpoint", "sd_xl_base_1.0.safetensors")),
-                vae=overrides.get("vae", stack_cfg.get("vae", "sdxl_vae.safetensors")),
+                vae=overrides.get("vae", stack_cfg.get("vae")),
                 loras=overrides.get("loras", stack_cfg.get("loras", [])),
                 width=overrides.get("width", defaults.get("width", 1024)),
                 height=overrides.get("height", defaults.get("height", 1024)),

@@ -606,10 +606,12 @@ def generate_clone_workflow(meta: CivitaiGenMeta, model_filenames: dict, config=
             kwargs["vae"] = vae
 
         if meta.hires_upscale:
+            kwargs["hires_upscale"] = meta.hires_upscale
+            kwargs["hires_denoising"] = meta.hires_denoising
+            kwargs["hires_upscaler"] = meta.hires_upscaler
             console.print(
-                f"  [yellow]WARNING: Hires fix was used (upscale: {meta.hires_upscale}x, "
-                f"upscaler: {meta.hires_upscaler}) -- not yet supported. "
-                f"Results may differ.[/]"
+                f"  [cyan]Hires fix: {meta.hires_upscale}x ({meta.hires_upscaler}), "
+                f"denoise: {meta.hires_denoising or 0.5}[/]"
             )
 
     elif loader_type == "unet":

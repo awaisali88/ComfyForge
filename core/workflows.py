@@ -60,7 +60,7 @@ def text2img_sdxl(
     prompt: str,
     negative: str = "blurry, low quality, watermark, text",
     checkpoint: str = "sd_xl_base_1.0.safetensors",
-    vae: str = "sdxl_vae.safetensors",
+    vae: str | None = None,
     loras: list[dict] | None = None,
     width: int = 1024,
     height: int = 1024,
@@ -70,15 +70,27 @@ def text2img_sdxl(
     scheduler: str = "normal",
     seed: int = -1,
     batch_size: int = 1,
+    hires_upscale: float | None = None,
+    hires_denoising: float | None = None,
+    hires_upscaler: str | None = None,
 ) -> dict:
-    """SDXL text-to-image workflow."""
+    """SDXL / SD1.5 text-to-image workflow with optional hires fix.
+
+    When hires_upscale is set, a second KSampler pass runs on the upscaled
+    latent to add detail (matching A1111's hires fix behavior).
+    """
     b = WorkflowBuilder()
 
-    # Checkpoint loader
+    # Checkpoint loader (output 0=model, 1=clip, 2=vae)
     ckpt = b.add("CheckpointLoaderSimple", {"ckpt_name": checkpoint})
 
-    # Optional VAE
-    vae_node = b.add("VAELoader", {"vae_name": vae})
+    # VAE: use explicit VAE if provided, otherwise use the checkpoint's built-in VAE
+    if vae:
+        vae_source = b.add("VAELoader", {"vae_name": vae})
+        vae_idx = 0
+    else:
+        vae_source = ckpt
+        vae_idx = 2  # CheckpointLoaderSimple output index 2 = VAE
 
     # Current model/clip outputs
     model_out = ckpt
@@ -116,9 +128,11 @@ def text2img_sdxl(
         "batch_size": batch_size,
     })
 
-    # KSampler
+    actual_seed = seed if seed >= 0 else _random_seed()
+
+    # KSampler (first pass)
     sampler_node = b.add("KSampler", {
-        "seed": seed if seed >= 0 else _random_seed(),
+        "seed": actual_seed,
         "steps": steps,
         "cfg": cfg,
         "sampler_name": sampler,
@@ -130,10 +144,65 @@ def text2img_sdxl(
     sampler_node.link("negative", neg)
     sampler_node.link("latent_image", latent)
 
+    # The latent that gets decoded — either first pass or hires pass
+    final_samples = sampler_node
+
+    # ── Hires fix (second pass) ──
+    if hires_upscale and hires_upscale > 1.0:
+        denoise = hires_denoising if hires_denoising is not None else 0.5
+        upscaler = (hires_upscaler or "").lower()
+
+        # Determine upscale method based on A1111 upscaler name
+        if upscaler in ("latent", "latent (nearest)", "latent (nearest-exact)", ""):
+            # Upscale in latent space (default A1111 behavior for "Latent")
+            upscale = b.add("LatentUpscaleBy", {
+                "scale_by": hires_upscale,
+                "upscale_method": "nearest-exact",
+            })
+            upscale.link("samples", sampler_node)
+        elif upscaler in ("latent (bilinear)", "bilinear"):
+            upscale = b.add("LatentUpscaleBy", {
+                "scale_by": hires_upscale,
+                "upscale_method": "bilinear",
+            })
+            upscale.link("samples", sampler_node)
+        else:
+            # Pixel-space upscalers (ESRGAN, SwinIR, etc.):
+            # decode -> upscale image -> encode back to latent
+            hires_decode = b.add("VAEDecode")
+            hires_decode.link("samples", sampler_node)
+            hires_decode.link("vae", vae_source, vae_idx)
+
+            img_upscale = b.add("ImageScaleBy", {
+                "scale_by": hires_upscale,
+                "upscale_method": "bilinear",
+            })
+            img_upscale.link("image", hires_decode)
+
+            upscale = b.add("VAEEncode")
+            upscale.link("pixels", img_upscale)
+            upscale.link("vae", vae_source, vae_idx)
+
+        # Second KSampler pass on the upscaled latent
+        hires_sampler = b.add("KSampler", {
+            "seed": actual_seed,
+            "steps": steps,
+            "cfg": cfg,
+            "sampler_name": sampler,
+            "scheduler": scheduler,
+            "denoise": denoise,
+        })
+        hires_sampler.link("model", model_out, model_idx)
+        hires_sampler.link("positive", pos)
+        hires_sampler.link("negative", neg)
+        hires_sampler.link("latent_image", upscale)
+
+        final_samples = hires_sampler
+
     # VAE decode
     decode = b.add("VAEDecode")
-    decode.link("samples", sampler_node)
-    decode.link("vae", vae_node)
+    decode.link("samples", final_samples)
+    decode.link("vae", vae_source, vae_idx)
 
     # Save
     save = b.add("SaveImage", {"filename_prefix": "comfyforge"})
