@@ -122,6 +122,31 @@ def add_civitai(
 
 
 @app.command()
+def clone_civitai(
+    url: str = typer.Argument(..., help="CivitAI image URL (e.g. https://civitai.com/images/12345) or image ID"),
+    output: str = typer.Option(None, "--output", "-o", help="Output JSON path (default: exported_workflows/clone_{id}.json)"),
+    no_download: bool = typer.Option(False, "--no-download", help="Skip model downloads, just generate the workflow"),
+    config: str = typer.Option(None, "--config", "-c", help="Path to config.yaml"),
+):
+    """Clone a CivitAI image - download its models and generate a matching ComfyUI workflow."""
+    from .civitai import clone_from_civitai
+
+    cfg = Config.load(config)
+    try:
+        path = clone_from_civitai(
+            url,
+            output_path=output,
+            no_download=no_download,
+            config=cfg,
+        )
+        console.print(f"\n[bold green]✓ Workflow saved → {path}[/]")
+        console.print("  Load in ComfyUI: Menu → Load → select the JSON file")
+    except Exception as e:
+        console.print(f"\n[bold red]✗ {e}[/]")
+        raise typer.Exit(1)
+
+
+@app.command()
 def list_models(
     config: str = typer.Option(None, "--config", "-c"),
 ):

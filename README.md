@@ -84,6 +84,26 @@ python -m core generate "Cinematic aerial shot of Lahore Fort" -p full
 python -m core generate "A timelapse of clouds over mountains" -p text2vid_wan
 ```
 
+### Clone from CivitAI
+
+Give it a CivitAI image URL and it will grab the prompt, models, and all
+generation parameters, download everything needed, and produce a workflow
+you can drag straight into ComfyUI:
+
+```bash
+# Clone an image — downloads models + generates workflow
+python -m core clone-civitai "https://civitai.com/images/12345"
+
+# Clone from a post URL (picks the first image with metadata)
+python -m core clone-civitai "https://civitai.com/posts/67890"
+
+# Just generate the workflow without downloading models
+python -m core clone-civitai "https://civitai.com/images/12345" --no-download
+
+# Save to a specific path
+python -m core clone-civitai "https://civitai.com/images/12345" -o my_workflow.json
+```
+
 ### Web Dashboard
 
 ```bash

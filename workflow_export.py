@@ -197,7 +197,7 @@ def make_text2img_sdxl(
     prompt: str,
     negative: str = "blurry, low quality, watermark, text, deformed",
     checkpoint: str = "sd_xl_base_1.0.safetensors",
-    vae: str = "sdxl_vae.safetensors",
+    vae: str | None = "sdxl_vae.safetensors",
     loras: list[dict] | None = None,
     width: int = 1024,
     height: int = 1024,
@@ -221,14 +221,19 @@ def make_text2img_sdxl(
         height=100,
     )
 
-    vae_node = wf.add_node(
-        "VAELoader",
-        widgets=[vae],
-        outputs=[Slot("VAE", "VAE")],
-        title="Load VAE",
-        color="#2a363b",
-        height=80,
-    )
+    if vae:
+        vae_node = wf.add_node(
+            "VAELoader",
+            widgets=[vae],
+            outputs=[Slot("VAE", "VAE")],
+            title="Load VAE",
+            color="#2a363b",
+            height=80,
+        )
+        vae_src, vae_slot = vae_node, 0
+    else:
+        # Use the checkpoint's built-in VAE (slot 2)
+        vae_src, vae_slot = ckpt, 2
 
     # LoRA chain
     model_src, model_slot = ckpt, 0
@@ -319,7 +324,7 @@ def make_text2img_sdxl(
         height=80,
     )
     wf.link(ksampler, 0, decode, 0, "LATENT")
-    wf.link(vae_node, 0, decode, 1, "VAE")
+    wf.link(vae_src, vae_slot, decode, 1, "VAE")
 
     save = wf.add_node(
         "SaveImage",
