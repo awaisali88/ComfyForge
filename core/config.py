@@ -160,6 +160,20 @@ class Config:
         lower = base_model_name.lower()
         if "flux" in lower:
             return "flux", archs.get("flux", {})
+        # Video bases — check before sdxl since "SVD XT" contains "xt" not "xl",
+        # but some base model strings may still collide.
+        if "wan" in lower:
+            if "i2v" in lower or "img2vid" in lower or "image" in lower:
+                if "wan_i2v" in archs:
+                    return "wan_i2v", archs["wan_i2v"]
+            if "wan_t2v" in archs:
+                return "wan_t2v", archs["wan_t2v"]
+        if "svd" in lower or "stable video" in lower:
+            if "svd" in archs:
+                return "svd", archs["svd"]
+        if "animatediff" in lower or "animate diff" in lower:
+            if "animatediff_sdxl" in archs:
+                return "animatediff_sdxl", archs["animatediff_sdxl"]
         if "xl" in lower or "sdxl" in lower or "pony" in lower:
             return "sdxl", archs.get("sdxl", {})
         # Default to sdxl

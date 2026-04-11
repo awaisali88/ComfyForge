@@ -169,3 +169,32 @@ class ComfyClient:
         """Return list of missing required node types."""
         installed = set(self.get_installed_nodes())
         return [n for n in required if n not in installed]
+
+    def get_model_filenames(
+        self,
+        node_type: str = "CheckpointLoaderSimple",
+        input_name: str = "ckpt_name",
+    ) -> list[str]:
+        """Return the list of filenames ComfyUI advertises for a model input.
+
+        ComfyUI exposes installed model files via /object_info: each loader
+        node declares an enum-style input whose first element is the list
+        of currently-scanned filenames. Useful for detecting which
+        checkpoints / loras / vae files are actually present without
+        reimplementing ComfyUI's folder-scan logic on our side.
+        """
+        try:
+            r = httpx.get(f"{self.base}/object_info/{node_type}", timeout=10)
+            r.raise_for_status()
+            data = r.json().get(node_type, {})
+            inputs = data.get("input", {})
+            # "required" or "optional" — check both
+            for section in ("required", "optional"):
+                entry = inputs.get(section, {}).get(input_name)
+                if entry and isinstance(entry, list) and entry:
+                    first = entry[0]
+                    if isinstance(first, list):
+                        return [str(x) for x in first]
+            return []
+        except Exception:
+            return []

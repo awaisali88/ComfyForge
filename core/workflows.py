@@ -420,7 +420,7 @@ def img2vid_animatediff(
 def text2vid_wan(
     prompt: str,
     negative: str = "blurry, low quality, watermark",
-    checkpoint: str = "wan2.1_t2v_14B_fp16.safetensors",
+    checkpoint: str = "Wan2_1-T2V-14B_fp8_e4m3fn.safetensors",
     width: int = 832,
     height: int = 480,
     frames: int = 81,
@@ -479,7 +479,7 @@ def img2vid_wan(
     prompt: str,
     image_path: str,
     negative: str = "blurry, low quality",
-    checkpoint: str = "wan2.1_i2v_480p_14B_fp16.safetensors",
+    checkpoint: str = "Wan2_1-I2V-14B-480P_fp8_e4m3fn.safetensors",
     width: int = 832,
     height: int = 480,
     frames: int = 81,

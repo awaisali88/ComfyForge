@@ -20,6 +20,17 @@ models:
   - vae
   sources:
   - https://huggingface.co/stabilityai/sdxl-vae/resolve/main/sdxl_vae.safetensors
+- id: sdxl_vae_fp16_fix
+  filename: sdxl_vae_fp16_fix.safetensors
+  type: vae
+  size_gb: 0.3
+  tags:
+  - sdxl
+  - vae
+  - fp16-fix
+  sources:
+  - https://civitai.com/api/download/models/155933
+  - https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/resolve/main/sdxl_vae.safetensors
 - id: flux_dev
   filename: flux1-dev.safetensors
   type: diffusion_model
@@ -102,27 +113,39 @@ models:
   sources:
   - https://huggingface.co/guoyww/animatediff/resolve/main/mm_sd_v15_v2.safetensors
 - id: wan_t2v
-  filename: wan2.1_t2v_14B_fp16.safetensors
+  filename: Wan2_1-T2V-14B_fp8_e4m3fn.safetensors
   type: wan
-  size_gb: 28.0
+  size_gb: 14.9
   tags:
   - video
   - wan
   - text2vid
-  - high-quality
+  - fp8
   sources:
-  - https://huggingface.co/Wan-AI/Wan2.1-T2V-14B/resolve/main/diffusion_pytorch_model.safetensors
+  - https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1-T2V-14B_fp8_e4m3fn.safetensors
 - id: wan_i2v
-  filename: wan2.1_i2v_480p_14B_fp16.safetensors
+  filename: Wan2_1-I2V-14B-480P_fp8_e4m3fn.safetensors
   type: wan
-  size_gb: 28.0
+  size_gb: 17.0
   tags:
   - video
   - wan
   - img2vid
-  - high-quality
+  - fp8
   sources:
-  - https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-480P/resolve/main/diffusion_pytorch_model.safetensors
+  - https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1-I2V-14B-480P_fp8_e4m3fn.safetensors
+- id: wan_i2v_720p
+  filename: Wan2_1-I2V-14B-720P_fp8_e4m3fn.safetensors
+  type: wan
+  size_gb: 17.0
+  tags:
+  - video
+  - wan
+  - img2vid
+  - fp8
+  - hires
+  sources:
+  - https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1-I2V-14B-720P_fp8_e4m3fn.safetensors
 - id: detail_tweaker_xl
   filename: add-detail-xl.safetensors
   type: lora
@@ -296,6 +319,144 @@ models:
   - auto-discovered
   sources:
   - https://huggingface.co/jeferyai/myusemodel/resolve/main/fashionGirl/fashionGirl_v40.safetensors
+- id: 23high_noise_cumshot_aesthetics
+  filename: 23High noise-Cumshot Aesthetics.safetensors
+  type: checkpoint
+  size_gb: 0
+  tags:
+  - checkpoint
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/2116008
+- id: bouncehighwan2_2
+  filename: BounceHighWan2_2.safetensors
+  type: lora
+  size_gb: 0
+  tags:
+  - lora
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/2191217
+- id: wan2_2_i2v_breast_insertion_v1_0
+  filename: wan2.2-i2v-breast-insertion-v1.0.zip
+  type: lora
+  size_gb: 0
+  tags:
+  - lora
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/2232429
+- id: wan_2_2_i2v_pov_titfuck_paizuri_high_v1_0
+  filename: WAN-2.2-I2V-POV-Titfuck-Paizuri-HIGH-v1.0.safetensors
+  type: lora
+  size_gb: 0
+  tags:
+  - lora
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/2342652
+- id: wan22_cumv2_high
+  filename: Wan22_CumV2_High.safetensors
+  type: lora
+  size_gb: 0
+  tags:
+  - lora
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/2460386
+- id: wanvideo27_wan27video_trainingdata
+  filename: wanVideo27_wan27Video_trainingData.zip
+  type: checkpoint
+  size_gb: 0
+  tags:
+  - checkpoint
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/2834741
+  - https://civitai.com/api/download/models/1854846
+  - https://civitai.com/api/download/models/2828005
+- id: cinenautsxlatrue_cinenautsv20
+  filename: cinenautsXLATRUE_cinenautsV20.safetensors
+  type: checkpoint
+  size_gb: 0
+  tags:
+  - checkpoint
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/607422
+- id: xl_more_art_full_v1
+  filename: xl_more_art-full_v1.safetensors
+  type: lora
+  size_gb: 0
+  tags:
+  - lora
+  - auto-discovered
+  sources:
+  - https://huggingface.co/frankjoshua/xl_more_art-full_v1/resolve/main/xl_more_art-full_v1.safetensors
+  - https://civitai.com/api/download/models/152309
+- id: perfection_style
+  filename: perfection style.safetensors
+  type: lora
+  size_gb: 0
+  tags:
+  - lora
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/458257
+- id: unreal_engine_style
+  filename: Unreal Engine style.safetensors
+  type: lora
+  size_gb: 0
+  tags:
+  - lora
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/427971
+- id: chiaroscuro_lighting_style
+  filename: Chiaroscuro Lighting Style.safetensors
+  type: lora
+  size_gb: 0
+  tags:
+  - lora
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/315825
+- id: facial_expression_style_v2
+  filename: facial expression style v2.safetensors
+  type: lora
+  size_gb: 0
+  tags:
+  - lora
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/603774
+- id: cinematic_color_motion_picture_film_style
+  filename: cinematic color motion picture film style.safetensors
+  type: lora
+  size_gb: 0
+  tags:
+  - lora
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/602301
+- id: hollywood_anamorphic_format_film_style
+  filename: Hollywood Anamorphic format film style.safetensors
+  type: lora
+  size_gb: 0
+  tags:
+  - lora
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/578357
+- id: bram_stoker_dracula_style
+  filename: Bram Stoker Dracula style.safetensors
+  type: lora
+  size_gb: 0
+  tags:
+  - lora
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/543311
 type_directories:
   checkpoint: checkpoints
   lora: loras

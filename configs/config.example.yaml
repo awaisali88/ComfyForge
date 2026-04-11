@@ -161,3 +161,67 @@ architectures:
       guidance: 1.0
       sampler: euler
       scheduler: simple
+
+  # ── Video architectures ─────────────────────────────────────────────
+  # These route CivitAI video posts to the matching video workflow factory
+  # in core/workflows.py. Add new video bases here -- no code changes needed.
+  wan_t2v:
+    aliases: ["Wan Video 14B t2v", "Wan Video 14B T2V", "Wan 2.1 T2V", "Wan Video 1.3B t2v", "Wan Video", "Wan Video 2.2 T2V-A14B"]
+    loader: checkpoint
+    workflow: text2vid_wan
+    lora_loader: standard
+    checkpoint_model_ids: ["wan_t2v"]
+    checkpoint_match: ["wan"]
+    defaults:
+      cfg: 6.0
+      steps: 30
+      sampler: euler
+      scheduler: normal
+      frames: 81
+
+  wan_i2v:
+    aliases: ["Wan Video 14B i2v 480p", "Wan Video 14B i2v 720p", "Wan 2.1 I2V", "Wan Video i2v", "Wan Video 2.2 I2V-A14B"]
+    loader: checkpoint
+    workflow: img2vid_wan
+    lora_loader: standard
+    requires_init_image: true
+    # When CivitAI didn't provide a source still, ComfyForge falls back to
+    # this t2v architecture so the workflow is runnable without manual setup.
+    t2v_fallback: wan_t2v
+    # Registry model IDs to auto-download when no matching checkpoint is
+    # installed locally. Tried in order. See configs/models.yaml.
+    checkpoint_model_ids: ["wan_i2v"]
+    # Substring match against installed checkpoint filenames. Any file that
+    # contains one of these is accepted as a usable Wan I2V base.
+    checkpoint_match: ["wan"]
+    defaults:
+      cfg: 6.0
+      steps: 30
+      sampler: euler
+      scheduler: normal
+      frames: 81
+
+  svd:
+    aliases: ["SVD", "SVD XT", "SVD 1.1", "Stable Video Diffusion"]
+    loader: image_only_checkpoint
+    workflow: img2vid_svd
+    lora_loader: none
+    requires_init_image: true
+    defaults:
+      cfg: 2.5
+      steps: 20
+      frames: 25
+      fps: 8
+
+  animatediff_sdxl:
+    aliases: ["AnimateDiff SDXL", "AnimateDiff", "AnimateDiff SD 1.5", "AnimateDiff LCM"]
+    loader: checkpoint
+    workflow: img2vid_animatediff
+    lora_loader: standard
+    requires_init_image: true
+    requires_motion_module: true
+    defaults:
+      cfg: 7.0
+      steps: 20
+      frames: 16
+      fps: 8
