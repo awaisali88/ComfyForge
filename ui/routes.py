@@ -102,10 +102,11 @@ async def clone_civitai_preview(req: CloneRequest):
     from core.civitai import parse_civitai_url, fetch_image_metadata, _fetch_post_images
 
     try:
+        cfg = Config.load()
         content_type, content_id = parse_civitai_url(req.url)
 
         if content_type == "post":
-            images = _fetch_post_images(content_id)
+            images = _fetch_post_images(content_id, cfg)
             image_data = None
             for img in images:
                 if img.get("meta"):
@@ -121,7 +122,7 @@ async def clone_civitai_preview(req: CloneRequest):
             image_id = content_id
 
         loop = asyncio.get_event_loop()
-        meta = await loop.run_in_executor(None, lambda: fetch_image_metadata(image_id))
+        meta = await loop.run_in_executor(None, lambda: fetch_image_metadata(image_id, cfg))
 
         return {
             "success": True,
@@ -330,7 +331,7 @@ async def serve_workflow_file(path: str):
     return FileResponse(
         file_path,
         media_type="application/json",
-        headers={"Content-Disposition": f"attachment; filename={file_path.name}"},
+        filename=file_path.name,
     )
 
 

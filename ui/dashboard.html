@@ -643,17 +643,11 @@
     <label>CivitAI URL</label>
     <input type="url" id="clone-url" placeholder="https://civitai.com/images/12345">
 
-    <div class="row">
-      <div class="checkbox-row">
-        <input type="checkbox" id="clone-no-download">
-        <label for="clone-no-download">Skip model downloads</label>
-      </div>
-      <div></div>
-    </div>
+    <button class="secondary mb" id="btn-preview" onclick="doPreview()" style="width:100%">Preview Metadata</button>
 
     <div class="row" style="gap: 0.5rem">
-      <button class="secondary" id="btn-preview" onclick="doPreview()">Preview Metadata</button>
-      <button class="primary" id="btn-clone" onclick="doClone()" style="margin-top:0">Clone & Build Workflow</button>
+      <button class="secondary" id="btn-clone-workflow" onclick="doCloneWorkflowOnly()" style="width:100%">Workflow Only (skip downloads)</button>
+      <button class="primary" id="btn-clone" onclick="doCloneAll()" style="margin-top:0">Download Models & Build Workflow</button>
     </div>
 
     <!-- Preview card (hidden until fetched) -->
@@ -927,6 +921,19 @@ function addPreviewVideo(containerId, url, name) {
   grid.parentElement.classList.remove('hidden');
 }
 
+async function triggerDownload(url, filename) {
+  const resp = await fetch(url);
+  const blob = await resp.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = filename || 'workflow.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(blobUrl);
+}
+
 function openLightbox(url) {
   const lb = document.getElementById('lightbox');
   document.getElementById('lightbox-img').src = url;
@@ -1154,22 +1161,32 @@ async function doPreview() {
   btn.textContent = 'Preview Metadata';
 }
 
-async function doClone() {
+/* Clone: workflow only (skip model downloads) */
+function doCloneWorkflowOnly() { _doClone(true); }
+
+/* Clone: download models + build workflow */
+function doCloneAll() { _doClone(false); }
+
+async function _doClone(skipDownloads) {
   const url = document.getElementById('clone-url').value.trim();
   if (!url) return;
 
-  const btn = document.getElementById('btn-clone');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>Cloning...';
+  const btnAll = document.getElementById('btn-clone');
+  const btnWf = document.getElementById('btn-clone-workflow');
+  const activeBtn = skipDownloads ? btnWf : btnAll;
+  const activeLabel = skipDownloads ? 'Workflow Only (skip downloads)' : 'Download Models & Build Workflow';
+
+  btnAll.disabled = true;
+  btnWf.disabled = true;
+  activeBtn.innerHTML = '<span class="spinner"></span>' + (skipDownloads ? 'Building...' : 'Downloading & Building...');
   clearLog('clone-log');
   document.getElementById('clone-download-area').classList.add('hidden');
   document.getElementById('clone-download-area').innerHTML = '';
 
-  const noDownload = document.getElementById('clone-no-download').checked;
-
   log('clone-log', 'Starting clone from CivitAI...', 'info');
   log('clone-log', 'URL: ' + url);
-  if (noDownload) log('clone-log', 'Model downloads: SKIPPED', 'warn');
+  if (skipDownloads) log('clone-log', 'Model downloads: SKIPPED', 'warn');
+  else log('clone-log', 'Will download all required models', 'info');
   showProgress('clone');
   updateProgressLabel('clone', 'Initializing...');
 
@@ -1177,7 +1194,7 @@ async function doClone() {
     const res = await fetch('/api/clone-civitai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, no_download: noDownload }),
+      body: JSON.stringify({ url, no_download: skipDownloads }),
     });
     const data = await res.json();
     const jobId = data.job_id;
@@ -1205,7 +1222,7 @@ async function doClone() {
               const dbtn = document.createElement('button');
               dbtn.className = 'download-btn';
               dbtn.innerHTML = `&#x2B73; Download Workflow: ${file.name}`;
-              dbtn.onclick = () => { window.location.href = file.url; };
+              dbtn.onclick = () => { triggerDownload(file.url, file.name); };
               area.appendChild(dbtn);
             }
           }
@@ -1214,11 +1231,14 @@ async function doClone() {
       },
       onComplete(msg) {
         hideProgress('clone');
-        btn.disabled = false;
-        btn.textContent = 'Clone & Build Workflow';
+        btnAll.disabled = false;
+        btnWf.disabled = false;
+        btnAll.textContent = 'Download Models & Build Workflow';
+        btnWf.textContent = 'Workflow Only (skip downloads)';
         if (msg.success !== false) {
           log('clone-log', '\nWorkflow generated!', 'ok');
           if (msg.workflow_path) log('clone-log', 'Saved to: ' + msg.workflow_path, 'ok');
+          log('clone-log', 'Use the download button below to save the workflow file.', 'info');
         } else {
           log('clone-log', '\nClone failed', 'err');
           (msg.errors || []).forEach(e => log('clone-log', '  ' + e, 'err'));
@@ -1226,16 +1246,20 @@ async function doClone() {
       },
       onError(msg) {
         hideProgress('clone');
-        btn.disabled = false;
-        btn.textContent = 'Clone & Build Workflow';
+        btnAll.disabled = false;
+        btnWf.disabled = false;
+        btnAll.textContent = 'Download Models & Build Workflow';
+        btnWf.textContent = 'Workflow Only (skip downloads)';
         log('clone-log', '\nError: ' + msg.error, 'err');
       },
     };
   } catch (e) {
     hideProgress('clone');
     log('clone-log', 'Error: ' + e.message, 'err');
-    btn.disabled = false;
-    btn.textContent = 'Clone & Build Workflow';
+    btnAll.disabled = false;
+    btnWf.disabled = false;
+    btnAll.textContent = 'Download Models & Build Workflow';
+    btnWf.textContent = 'Workflow Only (skip downloads)';
   }
 }
 
@@ -1301,7 +1325,7 @@ async function doExport() {
         const dbtn = document.createElement('button');
         dbtn.className = 'download-btn';
         dbtn.innerHTML = `&#x2B73; Download Workflow: ${data.workflow_filename}`;
-        dbtn.onclick = () => { window.location.href = `/api/files/workflows/${data.workflow_filename}`; };
+        dbtn.onclick = () => { triggerDownload(`/api/files/workflows/${data.workflow_filename}`, data.workflow_filename); };
         area.appendChild(dbtn);
         area.classList.remove('hidden');
       }

@@ -250,6 +250,24 @@ models:
   - auto-discovered
   sources:
   - https://civitai.com/api/download/models/300972?type=Model&format=PickleTensor&size=full&fp=fp32
+- id: koreanstyle25d_koreanstyle25dbaked
+  filename: koreanstyle25D_koreanstyle25DBaked.safetensors
+  type: checkpoint
+  size_gb: 0
+  tags:
+  - checkpoint
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/17084
+- id: chilloutmixss_xss10
+  filename: chilloutmixss_xss10.safetensors
+  type: lora
+  size_gb: 0
+  tags:
+  - lora
+  - auto-discovered
+  sources:
+  - https://huggingface.co/HankChang/chilloutmixss_xss10/resolve/main/chilloutmixss_xss10.safetensors
 type_directories:
   checkpoint: checkpoints
   lora: loras
