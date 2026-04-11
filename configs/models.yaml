@@ -268,6 +268,34 @@ models:
   - auto-discovered
   sources:
   - https://huggingface.co/HankChang/chilloutmixss_xss10/resolve/main/chilloutmixss_xss10.safetensors
+- id: cyberrealisticpony_v170
+  filename: cyberrealisticPony_v170.safetensors
+  type: checkpoint
+  size_gb: 0
+  tags:
+  - checkpoint
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/2833750
+  - https://civitai.com/api/download/models/2727742
+- id: koreandolllikenessv20_v20
+  filename: koreandolllikenessV20_v20.safetensors
+  type: lora
+  size_gb: 0
+  tags:
+  - lora
+  - auto-discovered
+  sources:
+  - https://civitai.com/api/download/models/77386
+- id: fashiongirl_v40
+  filename: fashionGirl_v40.safetensors
+  type: lora
+  size_gb: 0
+  tags:
+  - lora
+  - auto-discovered
+  sources:
+  - https://huggingface.co/jeferyai/myusemodel/resolve/main/fashionGirl/fashionGirl_v40.safetensors
 type_directories:
   checkpoint: checkpoints
   lora: loras

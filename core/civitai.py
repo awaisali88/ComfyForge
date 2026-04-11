@@ -67,6 +67,7 @@ class LoraRef:
     weight: float
     version_id: int | None = None
     filename: str | None = None
+    hash: str | None = None  # SHA256/AutoV2 — used for CivitAI by-hash lookup
 
 
 @dataclass
@@ -89,8 +90,10 @@ class CivitaiGenMeta:
     checkpoint_name: str
     checkpoint_version_id: int | None = None
     checkpoint_filename: str | None = None
+    checkpoint_hash: str | None = None
     loras: list[LoraRef] = field(default_factory=list)
     vae_name: str | None = None
+    vae_hash: str | None = None
 
     # Hires fix (optional)
     hires_upscale: float | None = None
@@ -135,11 +138,13 @@ def parse_civitai_url(url: str) -> tuple[str, int]:
 def parse_loras_from_prompt(
     prompt: str,
     resources: list[dict] | None = None,
+    hashes: dict[str, str] | None = None,
 ) -> tuple[str, list[LoraRef]]:
     """Extract <lora:name:weight> tags from prompt.
 
     Returns (clean_prompt, lora_refs).
-    Merges with Civitai resources array to fill in version_id.
+    Merges with Civitai resources array (for version_id/hash) and the
+    A1111-style ``hashes`` dict (keys like ``lora:NAME``).
     """
     loras: list[LoraRef] = []
     for match in _LORA_RE.finditer(prompt):
@@ -151,24 +156,47 @@ def parse_loras_from_prompt(
     # collapse multiple spaces left behind
     clean = re.sub(r"  +", " ", clean)
 
-    # Merge version IDs from Civitai resources
+    # Apply hashes from the A1111-style hashes dict (e.g. {"lora:foo": "abc..."})
+    if isinstance(hashes, dict):
+        for key, h in hashes.items():
+            if not isinstance(key, str) or not h:
+                continue
+            if key.lower().startswith("lora:"):
+                tag_name = key.split(":", 1)[1]
+                for lr in loras:
+                    if lr.hash is None and _fuzzy_name_match(lr.name, tag_name):
+                        lr.hash = h
+                        break
+
+    # Merge version IDs / hashes from Civitai resources (new + legacy formats)
     if resources:
         for res in resources:
-            if res.get("type", "").lower() in ("lora", "locon", "lycoris"):
-                res_name = res.get("modelName", "") or res.get("name", "")
-                vid = res.get("modelVersionId")
-                # Match by substring (CivitAI resource names may differ slightly)
-                for lr in loras:
-                    if lr.version_id is None and _fuzzy_name_match(lr.name, res_name):
+            if res.get("type", "").lower() not in ("lora", "locon", "lycoris"):
+                continue
+            res_name = res.get("modelName", "") or res.get("name", "")
+            vid = res.get("modelVersionId")
+            rhash = res.get("hash")
+            rweight = res.get("weight")
+
+            # Match by substring (CivitAI resource names may differ slightly)
+            matched = False
+            for lr in loras:
+                if _fuzzy_name_match(lr.name, res_name):
+                    if lr.version_id is None and vid:
                         lr.version_id = vid
-                        break
-                else:
-                    # Resource not found in prompt tags -- add it anyway
-                    loras.append(LoraRef(
-                        name=res_name,
-                        weight=1.0,
-                        version_id=vid,
-                    ))
+                    if lr.hash is None and rhash:
+                        lr.hash = rhash
+                    matched = True
+                    break
+
+            if not matched:
+                # Resource not found in prompt tags -- add it anyway
+                loras.append(LoraRef(
+                    name=res_name or "unknown_lora",
+                    weight=float(rweight) if rweight is not None else 1.0,
+                    version_id=vid,
+                    hash=rhash,
+                ))
 
     return clean, loras
 
@@ -235,6 +263,51 @@ def _fetch_model_version(version_id: int, config=None) -> dict:
         )
         resp.raise_for_status()
         return resp.json()
+
+
+def _fetch_model_version_by_hash(file_hash: str, config=None) -> dict | None:
+    """GET /api/v1/model-versions/by-hash/{hash}.
+
+    Returns the model-version JSON, or None on 404 / error. CivitAI accepts
+    AutoV1, AutoV2, SHA256, CRC32 and Blake3 hashes here.
+    """
+    if not file_hash:
+        return None
+    try:
+        with httpx.Client(timeout=30) as client:
+            resp = client.get(
+                f"{CIVITAI_API}/model-versions/by-hash/{file_hash}",
+                headers=_api_headers(config),
+            )
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as e:
+        console.print(
+            f"  [dim]CivitAI by-hash lookup failed for {file_hash[:12]}…: {e}[/]"
+        )
+        return None
+
+
+def _resolve_civitai_by_hash(
+    file_hash: str, config=None
+) -> tuple[str | None, str | None]:
+    """Resolve a file hash to (filename, downloadUrl) via CivitAI."""
+    mv = _fetch_model_version_by_hash(file_hash, config)
+    if not mv:
+        return None, None
+    files = mv.get("files", [])
+    # Prefer the file whose hash matches; fall back to first file
+    target_hash = file_hash.lower()
+    for f in files:
+        f_hashes = f.get("hashes", {}) or {}
+        for h in f_hashes.values():
+            if isinstance(h, str) and h.lower() == target_hash:
+                return f.get("name"), f.get("downloadUrl")
+    if files:
+        return files[0].get("name"), files[0].get("downloadUrl")
+    return None, None
 
 
 def _fetch_image(image_id: int, config=None) -> dict:
@@ -329,7 +402,10 @@ def fetch_image_metadata(image_id: int, config=None) -> CivitaiGenMeta:
     # Parse prompt and LoRAs
     raw_prompt = meta.get("prompt", "")
     civitai_resources = meta.get("civitaiResources") or meta.get("resources") or []
-    clean_prompt, loras = parse_loras_from_prompt(raw_prompt, civitai_resources)
+    hashes_dict = meta.get("hashes") if isinstance(meta.get("hashes"), dict) else {}
+    clean_prompt, loras = parse_loras_from_prompt(
+        raw_prompt, civitai_resources, hashes_dict
+    )
 
     # Map sampler
     sampler_name, scheduler_name = map_sampler(meta.get("sampler"))
@@ -337,6 +413,13 @@ def fetch_image_metadata(image_id: int, config=None) -> CivitaiGenMeta:
     # Identify checkpoint
     checkpoint_name = meta.get("Model", "unknown")
     checkpoint_vid = None
+    checkpoint_hash: str | None = None
+    vae_hash: str | None = None
+
+    # Pull hashes from the A1111-style hashes dict
+    if hashes_dict:
+        checkpoint_hash = hashes_dict.get("model") or hashes_dict.get("Model")
+        vae_hash = hashes_dict.get("vae") or hashes_dict.get("VAE")
 
     # Try to find checkpoint in resources
     for res in civitai_resources:
@@ -345,7 +428,11 @@ def fetch_image_metadata(image_id: int, config=None) -> CivitaiGenMeta:
             checkpoint_vid = res.get("modelVersionId")
             if res.get("modelName"):
                 checkpoint_name = res["modelName"]
+            if not checkpoint_hash and res.get("hash"):
+                checkpoint_hash = res["hash"]
             break
+        if rtype == "vae" and not vae_hash and res.get("hash"):
+            vae_hash = res["hash"]
 
     # Also check modelVersionIds from the image response
     # Look up each version to properly identify checkpoint vs LoRA
@@ -418,8 +505,10 @@ def fetch_image_metadata(image_id: int, config=None) -> CivitaiGenMeta:
         checkpoint_name=checkpoint_name,
         checkpoint_version_id=checkpoint_vid,
         checkpoint_filename=checkpoint_filename,
+        checkpoint_hash=checkpoint_hash,
         loras=loras,
         vae_name=meta.get("VAE"),
+        vae_hash=vae_hash,
         hires_upscale=_float_or_none(meta.get("Hires upscale")),
         hires_upscaler=meta.get("Hires upscaler"),
         hires_denoising=_float_or_none(meta.get("Denoising strength")),
@@ -459,7 +548,13 @@ def _ensure_civitai_model(
     model_type: str,
     download_url: str,
 ) -> None:
-    """Register and download a model directly from CivitAI -- no HF/FireCrawl fallback."""
+    """Register and download a model directly from CivitAI.
+
+    Raises on failure. Callers should catch and fall back to
+    ``mm.ensure_or_search`` (HF / CivitAI search / FireCrawl) on errors —
+    most importantly 401 Unauthorized, which means the file is gated and
+    the configured CivitAI token can't fetch it directly.
+    """
     entry = mm._auto_register(filename, model_type, [download_url])
     mm._ensure(entry)
 
@@ -489,7 +584,7 @@ def resolve_and_download_models(
     ckpt_filename = meta.checkpoint_filename
     ckpt_download_url = None
 
-    # Resolve filename and download URL from version ID
+    # 1) version ID is the strongest signal
     if meta.checkpoint_version_id:
         vid_filename, vid_url = _resolve_civitai_version(meta.checkpoint_version_id, config)
         if vid_filename:
@@ -497,16 +592,29 @@ def resolve_and_download_models(
         if vid_url:
             ckpt_download_url = vid_url
 
+    # 2) by-hash lookup if version ID didn't pan out
+    if not ckpt_download_url and meta.checkpoint_hash:
+        h_filename, h_url = _resolve_civitai_by_hash(meta.checkpoint_hash, config)
+        if h_filename and not ckpt_filename:
+            ckpt_filename = h_filename
+        if h_url:
+            ckpt_download_url = h_url
+            console.print(
+                f"  [cyan]↳ Resolved checkpoint via hash {meta.checkpoint_hash[:12]}…[/]"
+            )
+
     if not ckpt_filename:
         ckpt_filename = meta.checkpoint_name.replace(" ", "_") + ".safetensors"
 
     if not no_download:
         console.print(f"\n  [bold]Checkpoint:[/] {ckpt_filename}")
         try:
-            if ckpt_download_url:
-                _ensure_civitai_model(mm, ckpt_filename, "checkpoint", ckpt_download_url)
-            else:
-                mm.ensure_or_search(ckpt_filename, "checkpoint")
+            mm.download_with_fallback(
+                ckpt_filename,
+                "checkpoint",
+                primary_url=ckpt_download_url,
+                search_hint=meta.checkpoint_name,
+            )
         except Exception as e:
             console.print(f"  [red]x Could not download checkpoint: {e}[/]")
 
@@ -518,7 +626,17 @@ def resolve_and_download_models(
         if not no_download:
             console.print(f"  [bold]VAE:[/] {vae_filename}")
             try:
-                mm.ensure_or_search(vae_filename, "vae")
+                # Try hash lookup first to get a direct CivitAI URL
+                vae_url = None
+                if meta.vae_hash:
+                    h_filename, h_url = _resolve_civitai_by_hash(meta.vae_hash, config)
+                    if h_url:
+                        vae_url = h_url
+                        if h_filename:
+                            vae_filename = h_filename
+                mm.download_with_fallback(
+                    vae_filename, "vae", primary_url=vae_url, search_hint=vae_filename
+                )
             except Exception as e:
                 console.print(f"  [yellow]WARNING: Could not download VAE: {e} -- using checkpoint VAE[/]")
                 vae_filename = None
@@ -532,7 +650,7 @@ def resolve_and_download_models(
         lora_filename = lr.filename
         lora_download_url = None
 
-        # Resolve filename and download URL from version ID
+        # 1) version ID is the strongest signal
         if lr.version_id:
             vid_filename, vid_url = _resolve_civitai_version(lr.version_id, config)
             if vid_filename:
@@ -540,16 +658,29 @@ def resolve_and_download_models(
             if vid_url:
                 lora_download_url = vid_url
 
+        # 2) hash-based CivitAI lookup (works for legacy `resources` entries)
+        if not lora_download_url and lr.hash:
+            h_filename, h_url = _resolve_civitai_by_hash(lr.hash, config)
+            if h_filename and not lora_filename:
+                lora_filename = h_filename
+            if h_url:
+                lora_download_url = h_url
+                console.print(
+                    f"  [cyan]↳ Resolved LoRA '{lr.name}' via hash {lr.hash[:12]}…[/]"
+                )
+
         if not lora_filename:
             lora_filename = lr.name.replace(" ", "_") + ".safetensors"
 
         if not no_download:
             console.print(f"  [bold]LoRA:[/] {lora_filename} (strength: {lr.weight})")
             try:
-                if lora_download_url:
-                    _ensure_civitai_model(mm, lora_filename, "lora", lora_download_url)
-                else:
-                    mm.ensure_or_search(lora_filename, "lora")
+                mm.download_with_fallback(
+                    lora_filename,
+                    "lora",
+                    primary_url=lora_download_url,
+                    search_hint=lr.name,
+                )
             except Exception as e:
                 console.print(f"  [yellow]WARNING: Could not download LoRA '{lr.name}': {e}[/]")
 
