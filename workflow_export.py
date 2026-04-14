@@ -970,6 +970,152 @@ def make_img2vid_wan(
     return wf
 
 
+def make_text2img_zimageturbo(
+    prompt: str,
+    negative: str = "blurry, low quality, watermark, text, deformed",
+    checkpoint: str = "zImageTurbo_turbo.safetensors",
+    clip_name: str = "qwen_3_4b.safetensors",
+    vae: str = "ae.safetensors",
+    width: int = 1024,
+    height: int = 1024,
+    steps: int = 8,
+    guidance: float = 1.0,
+    seed: int = -1,
+) -> UIWorkflow:
+    """Z-Image Turbo text-to-image workflow with positive and negative prompts."""
+    wf = UIWorkflow("Z-Image Turbo Text-to-Image")
+    seed = seed if seed >= 0 else _seed()
+
+    # ── Column 0: Loaders ──
+    unet = wf.add_node(
+        "UNETLoader",
+        widgets=[checkpoint, "default"],
+        outputs=[Slot("MODEL", "MODEL")],
+        title="Load UNET (Z-Image Turbo)",
+        color="#2a363b",
+        height=100,
+    )
+
+    clip_node = wf.add_node(
+        "CLIPLoader",
+        widgets=[clip_name, "ltxv"],
+        outputs=[Slot("CLIP", "CLIP")],
+        title="Load CLIP",
+        color="#2a363b",
+        height=100,
+    )
+
+    vae_node = wf.add_node(
+        "VAELoader",
+        widgets=[vae],
+        outputs=[Slot("VAE", "VAE")],
+        title="Load VAE",
+        color="#2a363b",
+        height=80,
+    )
+
+    wf.next_column()
+
+    # ── Column 1: Conditioning ──
+    pos_clip = wf.add_node(
+        "CLIPTextEncode",
+        widgets=[prompt],
+        inputs=[Slot("clip", "CLIP")],
+        outputs=[Slot("CONDITIONING", "CONDITIONING")],
+        title="Positive Prompt",
+        color="#232",
+        width=400,
+        height=180,
+    )
+    wf.link(clip_node, 0, pos_clip, 0, "CLIP")
+
+    flux_guidance = wf.add_node(
+        "FluxGuidance",
+        widgets=[guidance],
+        inputs=[Slot("conditioning", "CONDITIONING")],
+        outputs=[Slot("CONDITIONING", "CONDITIONING")],
+        title="Flux Guidance",
+        height=80,
+    )
+    wf.link(pos_clip, 0, flux_guidance, 0, "CONDITIONING")
+
+    neg_clip = wf.add_node(
+        "CLIPTextEncode",
+        widgets=[negative],
+        inputs=[Slot("clip", "CLIP")],
+        outputs=[Slot("CONDITIONING", "CONDITIONING")],
+        title="Negative Prompt",
+        color="#322",
+        width=400,
+        height=150,
+    )
+    wf.link(clip_node, 0, neg_clip, 0, "CLIP")
+
+    latent = wf.add_node(
+        "EmptySD3LatentImage",
+        widgets=[width, height, 1],
+        outputs=[Slot("LATENT", "LATENT")],
+        title="Empty Latent (SD3/Flux)",
+        height=100,
+    )
+
+    wf.next_column()
+
+    # ── Column 2: Sampler ──
+    ksampler = wf.add_node(
+        "KSampler",
+        widgets=[seed, "fixed", steps, 1.0, "euler", "simple", 1.0],
+        inputs=[
+            Slot("model", "MODEL"),
+            Slot("positive", "CONDITIONING"),
+            Slot("negative", "CONDITIONING"),
+            Slot("latent_image", "LATENT"),
+        ],
+        outputs=[Slot("LATENT", "LATENT")],
+        title="KSampler",
+        color="#335",
+        width=320,
+        height=200,
+    )
+    wf.link(unet, 0, ksampler, 0, "MODEL")
+    wf.link(flux_guidance, 0, ksampler, 1, "CONDITIONING")
+    wf.link(neg_clip, 0, ksampler, 2, "CONDITIONING")
+    wf.link(latent, 0, ksampler, 3, "LATENT")
+
+    wf.next_column()
+
+    # ── Column 3: Decode + Save ──
+    decode = wf.add_node(
+        "VAEDecode",
+        inputs=[Slot("samples", "LATENT"), Slot("vae", "VAE")],
+        outputs=[Slot("IMAGE", "IMAGE")],
+        title="VAE Decode",
+        height=80,
+    )
+    wf.link(ksampler, 0, decode, 0, "LATENT")
+    wf.link(vae_node, 0, decode, 1, "VAE")
+
+    save = wf.add_node(
+        "SaveImage",
+        widgets=["comfyforge/zimageturbo"],
+        inputs=[Slot("images", "IMAGE")],
+        title="Save Image",
+        color="#252",
+        height=80,
+    )
+    wf.link(decode, 0, save, 0, "IMAGE")
+
+    preview = wf.add_node(
+        "PreviewImage",
+        inputs=[Slot("images", "IMAGE")],
+        title="Preview",
+        height=80,
+    )
+    wf.link(decode, 0, preview, 0, "IMAGE")
+
+    return wf
+
+
 # ═══════════════════════════════════════════════════
 # Chained / Full pipeline (multiple JSONs)
 # ═══════════════════════════════════════════════════
@@ -1018,6 +1164,7 @@ TEMPLATES = {
     "text2img":            make_text2img_sdxl,
     "text2img_sdxl":       make_text2img_sdxl,
     "text2img_flux":       make_text2img_flux,
+    "text2img_zimageturbo": make_text2img_zimageturbo,
     "img2vid":             make_img2vid_svd,
     "img2vid_svd":         make_img2vid_svd,
     "img2vid_animatediff": make_img2vid_animatediff,
@@ -1040,6 +1187,7 @@ Usage:
 Templates:
   text2img             SDXL text-to-image
   text2img_flux        Flux text-to-image
+  text2img_zimageturbo Z-Image Turbo text-to-image
   img2vid_svd          SVD image-to-video
   img2vid_animatediff  AnimateDiff image-to-video
   img2vid_wan          Wan 2.1 image-to-video
@@ -1153,6 +1301,8 @@ def _ensure_models_for_kwargs(kwargs: dict[str, Any], template: str, no_download
         "text2img_sdxl": [("sd_xl_base_1.0.safetensors", "checkpoint"), ("sdxl_vae.safetensors", "vae")],
         "text2img_flux": [("flux1-dev.safetensors", "checkpoint"), ("ae.safetensors", "vae"),
                           ("t5xxl_fp16.safetensors", "clip"), ("clip_l.safetensors", "clip")],
+        "text2img_zimageturbo": [("zImageTurbo_turbo.safetensors", "diffusion_model"),
+                                  ("qwen_3_4b.safetensors", "clip"), ("ae.safetensors", "vae")],
         "img2vid_svd": [("svd_xt_1_1.safetensors", "svd")],
         "img2vid_animatediff": [("sd_xl_base_1.0.safetensors", "checkpoint"),
                                 ("mm_sdxl_v10_beta.safetensors", "motion")],
