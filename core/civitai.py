@@ -12,7 +12,7 @@ import httpx
 from rich.console import Console
 from rich.table import Table
 
-console = Console()
+console = Console(force_terminal=True)
 
 CIVITAI_API = "https://civitai.com/api/v1"
 

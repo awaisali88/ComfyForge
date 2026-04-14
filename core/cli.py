@@ -12,7 +12,7 @@ from .models import ModelManager
 from .pipeline import Pipeline
 
 app = typer.Typer(name="comfyforge", help="Automated AI Media Pipeline on ComfyUI")
-console = Console()
+console = Console(force_terminal=True)
 
 
 @app.command()

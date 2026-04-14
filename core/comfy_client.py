@@ -15,7 +15,7 @@ from rich.console import Console
 
 from .config import Config
 
-console = Console()
+console = Console(force_terminal=True)
 
 
 class ComfyClient:
@@ -130,7 +130,7 @@ class ComfyClient:
             for img in node_output.get("images", []):
                 filename = img.get("filename", "")
                 subfolder = img.get("subfolder", "")
-                p = self.cfg.comfyui_path / "output"
+                p = self.cfg.comfyui_data_path / "output"
                 if subfolder:
                     p = p / subfolder
                 p = p / filename
@@ -140,7 +140,7 @@ class ComfyClient:
             for vid in node_output.get("gifs", []):
                 filename = vid.get("filename", "")
                 subfolder = vid.get("subfolder", "")
-                p = self.cfg.comfyui_path / "output"
+                p = self.cfg.comfyui_data_path / "output"
                 if subfolder:
                     p = p / subfolder
                 p = p / filename

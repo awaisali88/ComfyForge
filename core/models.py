@@ -22,7 +22,7 @@ from rich.progress import (
 
 from .config import Config
 
-console = Console()
+console = Console(force_terminal=True)
 
 # ── Model type inference from filename ─────
 _TYPE_HINTS = {

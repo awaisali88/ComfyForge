@@ -26,7 +26,7 @@ from .workflows import (
     text2vid_wan,
 )
 
-console = Console()
+console = Console(force_terminal=True)
 
 
 @dataclass
